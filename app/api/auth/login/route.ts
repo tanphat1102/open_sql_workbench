@@ -48,6 +48,7 @@ function extractSapErrorMessage(payload: unknown): string {
 
 function translateSapError(message: string): string {
   if (
+    // Test GitHub Actions CI/CD pipeline
     /Ressource gefunden/i.test(message) ||
     /Resource not found/i.test(message)
   ) {
