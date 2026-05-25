@@ -1,4 +1,5 @@
 import { formatODataResults } from "@/lib/sapParser";
+import { jsonrepair } from "jsonrepair";
 import type { SapODataEnvelope, SapQueryParam } from "@/types/sap";
 
 function buildSapUrl(path: string, query?: Record<string, SapQueryParam>) {
@@ -36,7 +37,16 @@ async function parseJsonResponse<T>(response: Response) {
   try {
     data = text ? JSON.parse(text) : null;
   } catch (e) {
-    console.error("JSON Parse Error:", e); data = text;
+    try {
+      if (text) {
+        const repaired = jsonrepair(text);
+        data = JSON.parse(repaired);
+        console.warn("Recovered truncated JSON payload using jsonrepair");
+      }
+    } catch (e2) {
+      console.error("JSON Parse Error (fatal):", e2);
+      data = text;
+    }
   }
 
   if (!response.ok) {
