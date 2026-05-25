@@ -484,7 +484,7 @@ async function loadEntityRows(entitySetName: string) {
   return rawRows.map((row) => stripMetadataFields(row));
 }
 
-async function executeWorkbenchQuery(
+export async function executeWorkbenchQuery(
   queryText: string,
   fallbackEntity: string,
   availableEntityNames: string[],
