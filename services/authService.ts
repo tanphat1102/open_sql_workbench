@@ -10,7 +10,22 @@ export const authService = {
       body: JSON.stringify({ username, password }),
     });
 
-    const data = (await response.json()) as SapLoginResponse;
+    let data: SapLoginResponse;
+
+    try {
+      data = (await response.json()) as SapLoginResponse;
+    } catch {
+      data = { success: false, message: "SAP login failed" };
+    }
+
+    const sessionCheck = await fetch("/api/auth/check-session", {
+      method: "GET",
+      credentials: "same-origin",
+    });
+
+    if (sessionCheck.ok) {
+      return data.success ? data : { success: true, message: data.message };
+    }
 
     if (!response.ok) {
       if (typeof data.error === "string") {
@@ -26,6 +41,6 @@ export const authService = {
       throw new Error(data.message || "SAP login failed");
     }
 
-    return data;
+    throw new Error(data.message || "SAP login failed");
   },
 };
