@@ -1,3 +1,5 @@
+import { jsonrepair } from "jsonrepair";
+
 type ODataCollection<T> = {
   d?: {
     results?: T[];
@@ -28,17 +30,14 @@ export function formatODataResults<T>(
           // Thử parse chuẩn trước
           JSON.parse(fixedJson);
         } catch (e) {
-          // Nếu lỗi (thường do đứt nối chuỗi), thử tìm và cắt đuôi bị hỏng để parse đoạn hợp lệ
-          const lastValidBraceObject = fixedJson.lastIndexOf("}");
-          if (lastValidBraceObject > 0) {
-            fixedJson = fixedJson.substring(0, lastValidBraceObject + 1) + "]";
-            try {
-              const parsed = JSON.parse(fixedJson);
-              // Cập nhật lại vào data để return
-              data.RowsJson = JSON.stringify(parsed);
-            } catch (err2) {
-              console.error("SapParser: RowsJson bị hỏng hoàn toàn", err2);
-            }
+          try {
+            // Dùng jsonrepair để tự động khôi phục cấu trúc đối tượng JSON bị dở dang
+            const repaired = jsonrepair(fixedJson);
+            const parsed = JSON.parse(repaired);
+            data.RowsJson = JSON.stringify(parsed);
+            console.warn("Recovered partial RowsJson using jsonrepair");
+          } catch (err2) {
+            console.error("SapParser: RowsJson bị hỏng hoàn toàn", err2);
           }
         }
       }
