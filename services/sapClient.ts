@@ -18,14 +18,36 @@ function buildSapUrl(path: string, query?: Record<string, SapQueryParam>) {
   return `${url.pathname}${url.search}`;
 }
 
-async function parseJsonResponse<T>(response: Response) {
-  const data = (await response.json()) as T;
+type SapClientError = Error & {
+  status: number;
+  body: unknown;
+};
 
-  if (!response.ok) {
-    throw new Error("Lỗi khi gọi SAP service");
+function createSapClientError(message: string, status: number, body: unknown) {
+  const error = new Error(message) as SapClientError;
+  error.status = status;
+  error.body = body;
+  return error;
+}
+
+async function parseJsonResponse<T>(response: Response) {
+  const text = await response.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (e) {
+    console.error("JSON Parse Error:", e); data = text;
   }
 
-  return data;
+  if (!response.ok) {
+    throw createSapClientError(
+      typeof data === "string" ? data : "Lỗi khi gọi SAP service",
+      response.status,
+      data,
+    );
+  }
+
+  return data as T;
 }
 
 export const sapClient = {
@@ -41,6 +63,27 @@ export const sapClient = {
     return parseJsonResponse<T>(response);
   },
 
+  requestText: async (path: string, init?: RequestInit) => {
+    const response = await fetch(buildSapUrl(path), {
+      ...init,
+      headers: {
+        Accept: "application/xml, text/xml, */*",
+        ...(init?.headers ?? {}),
+      },
+    });
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw createSapClientError(
+        text || "Lỗi khi gọi SAP service",
+        response.status,
+        text,
+      );
+    }
+
+    return text;
+  },
+
   fetchCollection: async <T>(path: string, init?: RequestInit) => {
     const data = await sapClient.request<SapODataEnvelope<T>>(path, init);
     return formatODataResults(data) as T[];
@@ -48,6 +91,6 @@ export const sapClient = {
 
   fetchEntity: async <T>(path: string, init?: RequestInit) => {
     const data = await sapClient.request<{ d?: T }>(path, init);
-    return formatODataResults(data) as T;
+    console.log("sapClient fetch data type:", typeof data); return formatODataResults(data) as T;
   },
 };

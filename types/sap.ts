@@ -22,3 +22,21 @@ export type SapODataEnvelope<T> = {
     results?: T[];
   };
 };
+
+export type SapRunQueryResult = {
+  ResultId?: string;
+  Status?: string;
+  ObjectName?: string;
+  RowCount?: number;
+  ReturnedRows?: number;
+  TotalRows?: number;
+  MaxRows?: number;
+  Page?: number;
+  PageSize?: number;
+  TotalPages?: number;
+  Truncated?: boolean | string;
+  RowsJson?: string | null;
+  Csv?: string | null;
+  ErrorCode?: string | null;
+  ErrorText?: string | null;
+};
