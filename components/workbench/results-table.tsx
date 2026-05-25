@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { parseSapDate } from "@/lib/sapParser";
 import type { WorkbenchRow } from "@/types/workbench";
 
 type ResultsTableProps = {
@@ -28,8 +29,23 @@ function formatCellValue(value: WorkbenchRow[string]) {
     return value ? "Yes" : "No";
   }
 
+  if (typeof value === "string") {
+    const parsedDate = parseSapDate(value);
+
+    if (parsedDate) {
+      return new Intl.DateTimeFormat("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(parsedDate);
+    }
+  }
+
   if (value === null || value === undefined) {
     return "-";
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
   }
 
   return String(value);

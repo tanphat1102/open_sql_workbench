@@ -22,6 +22,9 @@ const SqlEditor = dynamic(
 );
 import { Separator } from "@/components/ui/separator";
 import type { WorkbenchTemplate } from "@/types/workbench";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import { authService } from "@/services/authService";
 
 type QueryWorkbenchProps = {
   selectedEntityName: string;
@@ -31,6 +34,8 @@ type QueryWorkbenchProps = {
   onQueryTextChange: (value: string) => void;
   onApplyTemplate: (template: WorkbenchTemplate) => void;
   onRunQuery: () => void;
+  needLogin?: boolean;
+  setNeedLogin?: (v: boolean) => void;
 };
 
 export function QueryWorkbench({
@@ -41,12 +46,65 @@ export function QueryWorkbench({
   onQueryTextChange,
   onApplyTemplate,
   onRunQuery,
+  needLogin,
+  setNeedLogin,
 }: QueryWorkbenchProps) {
   const primaryTemplate = templates[0];
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  async function handleLogin(e?: React.FormEvent) {
+    e?.preventDefault();
+    setIsLoggingIn(true);
+    try {
+      await authService.login({ username, password });
+
+      if (needLogin) {
+        // Close modal and retry query
+        setNeedLogin?.(false);
+        onRunQuery();
+      }
+    } catch (err) {
+      console.error("Login failed", err);
+      // keep modal open for retry
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
 
   return (
     <Card className="border-sky-100 bg-white shadow-[0_18px_50px_rgba(15,90,170,0.08)] backdrop-blur">
       <CardHeader className="space-y-4">
+        {needLogin ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
+            <form onSubmit={handleLogin} className="flex items-center gap-3">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+                <Input
+                  placeholder="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <Button type="submit" className="bg-amber-600 text-white">
+                  {isLoggingIn ? "Signing..." : "Sign in"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setNeedLogin?.(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="rounded-tl-xl rounded-bl-xl border-r border-sky-100 bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">

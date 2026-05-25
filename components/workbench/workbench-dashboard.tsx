@@ -34,6 +34,8 @@ export function WorkbenchDashboard() {
     handleEntityChange,
     applyTemplate,
     runQuery,
+    needLogin,
+    setNeedLogin,
   } = useWorkbench();
 
   return (
@@ -139,6 +141,8 @@ export function WorkbenchDashboard() {
               onQueryTextChange={setQueryText}
               onApplyTemplate={applyTemplate}
               onRunQuery={runQuery}
+              needLogin={needLogin}
+              setNeedLogin={setNeedLogin}
             />
 
             <ResultsTable

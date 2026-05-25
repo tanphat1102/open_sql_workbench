@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { workbenchService } from "@/services/workbenchService";
 import type { WorkbenchTemplate } from "@/types/workbench";
@@ -21,21 +21,104 @@ export function useWorkbench() {
   const [activeTemplateId, setActiveTemplateId] = useState(
     snapshot.templates[0]?.id ?? "",
   );
+  const [entities, setEntities] = useState(snapshot.entities);
+  const [templates, setTemplates] = useState(snapshot.templates);
+  const [rowsByEntity, setRowsByEntity] = useState(snapshot.rowsByEntity);
   const [activityEntries, setActivityEntries] = useState(snapshot.activity);
   const [resultRows, setResultRows] = useState(
-    workbenchService.getRowsForEntity(defaultEntity),
+    snapshot.rowsByEntity[defaultEntity] ?? [],
   );
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [needLogin, setNeedLogin] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSnapshot() {
+      setIsLoadingSnapshot(true);
+
+      try {
+        const { snapshot: liveSnapshot, isLive } =
+          await workbenchService.loadSnapshot();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setLoadError(
+          isLive
+            ? null
+            : "Không tải được dữ liệu live từ SAP, đang dùng dữ liệu dự phòng.",
+        );
+        setEntities(liveSnapshot.entities);
+        setTemplates(liveSnapshot.templates);
+        setRowsByEntity(liveSnapshot.rowsByEntity);
+        setActivityEntries(liveSnapshot.activity);
+
+        if (liveSnapshot.entities.length > 0) {
+          setSelectedEntityName((currentName) => {
+            const nextName = liveSnapshot.entities.some(
+              (entity) => entity.name === currentName,
+            )
+              ? currentName
+              : liveSnapshot.entities[0].name;
+
+            const nextTemplate = liveSnapshot.templates[0];
+
+            if (nextTemplate) {
+              setQueryText(buildTemplateQuery(nextTemplate, nextName));
+            }
+
+            setResultRows(liveSnapshot.rowsByEntity[nextName] ?? []);
+
+            return nextName;
+          });
+        }
+      } catch (err: any) {
+        if (err?.status === 401) {
+          setNeedLogin(true);
+          setIsLoadingSnapshot(false);
+          return;
+        }
+
+        // fallback to prior behavior
+        const { snapshot: liveSnapshot, isLive } =
+          await workbenchService.loadSnapshot();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setLoadError(
+          isLive
+            ? null
+            : "Không tải được dữ liệu live từ SAP, đang dùng dữ liệu dự phòng.",
+        );
+        setEntities(liveSnapshot.entities);
+        setTemplates(liveSnapshot.templates);
+        setRowsByEntity(liveSnapshot.rowsByEntity);
+        setActivityEntries(liveSnapshot.activity);
+      }
+      setIsLoadingSnapshot(false);
+    }
+
+    void loadSnapshot();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const selectedEntity = useMemo(
-    () =>
-      snapshot.entities.find((entity) => entity.name === selectedEntityName),
-    [selectedEntityName],
+    () => entities.find((entity) => entity.name === selectedEntityName),
+    [entities, selectedEntityName],
   );
 
-  const queryTemplates = snapshot.templates;
+  const queryTemplates = templates;
 
   const metrics = useMemo(() => {
-    const entityCount = snapshot.entities.length;
+    const entityCount = entities.length;
     const rowCount = resultRows.length;
 
     return snapshot.metrics.map((metric) => {
@@ -56,16 +139,30 @@ export function useWorkbench() {
       if (metric.label === "Proxy status") {
         return {
           ...metric,
-          value: isRunning ? "Running" : "Ready",
-          detail: isRunning
-            ? "Compiling the current query preview"
-            : `Showing ${rowCount} preview rows`,
+          value: isLoadingSnapshot
+            ? "Loading"
+            : isRunning
+              ? "Running"
+              : "Ready",
+          detail: isLoadingSnapshot
+            ? (loadError ??
+              "Loading live entity sets from /api/sap/opu/odata/sap/ZSQLWB_ODATA_SRV")
+            : isRunning
+              ? "Refreshing the current preview"
+              : `Showing ${rowCount} preview rows`,
         };
       }
 
       return metric;
     });
-  }, [isRunning, queryTemplates.length, resultRows.length]);
+  }, [
+    entities.length,
+    isLoadingSnapshot,
+    isRunning,
+    loadError,
+    queryTemplates.length,
+    resultRows.length,
+  ]);
 
   function handleEntityChange(entityName: string) {
     setSelectedEntityName(entityName);
@@ -77,7 +174,7 @@ export function useWorkbench() {
       setQueryText(buildTemplateQuery(nextTemplate, entityName));
     }
 
-    setResultRows(workbenchService.getRowsForEntity(entityName));
+    setResultRows(rowsByEntity[entityName] ?? []);
   }
 
   function applyTemplate(template: WorkbenchTemplate) {
@@ -88,31 +185,67 @@ export function useWorkbench() {
   function runQuery() {
     setIsRunning(true);
 
-    const nextRows = workbenchService.getRowsForEntity(selectedEntityName);
-    setResultRows(nextRows);
-    setActivityEntries((currentEntries) => [
-      {
-        id: `activity-${Date.now()}`,
-        title: `Query executed for ${selectedEntityName}`,
-        detail: `Loaded ${nextRows.length} rows through the local workbench seed.`,
-        timestampRaw: "/Date(1716496400000)/",
-        tone: "success",
-      },
-      ...currentEntries,
-    ]);
+    void (async () => {
+      try {
+        const execution = await workbenchService.executeQuery(
+          queryText,
+          selectedEntityName,
+          entities.map((entity) => entity.name),
+        );
 
-    setIsRunning(false);
+        setResultRows(execution.rows);
+        setSelectedEntityName(execution.entitySetName);
+
+        setActivityEntries((currentEntries) => [
+          {
+            id: `activity-${Date.now()}`,
+            title: `Query executed for ${execution.entitySetName}`,
+            detail: execution.isCountQuery
+              ? `Counted ${execution.rows[0]?.RecordCount ?? 0} records through ${execution.queryPath}`
+              : `Loaded ${execution.rows.length} rows through ${execution.queryPath}`,
+            timestampRaw: "/Date(1716496400000)/",
+            tone: "success",
+          },
+          ...currentEntries,
+        ]);
+      } catch (error) {
+        // If auth error, prompt for login
+        const err: any = error;
+        if (err?.status === 401) {
+          setNeedLogin(true);
+        }
+        setActivityEntries((currentEntries) => [
+          {
+            id: `activity-${Date.now()}`,
+            title: `Query failed for ${selectedEntityName}`,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "Unable to execute live OData query.",
+            timestampRaw: "/Date(1716496400000)/",
+            tone: "warning",
+          },
+          ...currentEntries,
+        ]);
+      } finally {
+        setIsRunning(false);
+      }
+    })();
   }
 
   return {
     metrics,
     selectedEntity,
     selectedEntityName,
-    entities: snapshot.entities,
+    entities,
     templates: queryTemplates,
     queryText,
     setQueryText,
     isRunning,
+    isLoadingSnapshot,
+    loadError,
+    needLogin,
+    setNeedLogin,
     activityEntries,
     resultRows,
     handleEntityChange,
