@@ -101,6 +101,7 @@ export const sapClient = {
 
   fetchEntity: async <T>(path: string, init?: RequestInit) => {
     const data = await sapClient.request<{ d?: T }>(path, init);
-    console.log("sapClient fetch data type:", typeof data); return formatODataResults(data) as T;
+    console.log("sapClient fetch data type:", typeof data);
+    return formatODataResults(data) as T;
   },
 };

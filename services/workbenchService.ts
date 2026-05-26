@@ -412,7 +412,7 @@ async function executeLiveRunQuery(
   }
 
   console.log("sap response result:", JSON.stringify(result).substring(0, 300));
-const rows = parseRunQueryRows(result.RowsJson).map((row) =>
+  const rows = parseRunQueryRows(result.RowsJson).map((row) =>
     stripMetadataFields(row),
   );
 
