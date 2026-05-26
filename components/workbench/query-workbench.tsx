@@ -136,24 +136,6 @@ export function QueryWorkbench({
             <CardTitle className="text-xl text-slate-900">
               Query workspace
             </CardTitle>
-            <CardDescription className="max-w-2xl text-slate-600">
-              Compose a reusable query shell for {selectedEntityName} and keep
-              the actual SAP call path behind the proxy layer.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge
-              variant="outline"
-              className="border-sky-200 bg-sky-50 text-sky-700"
-            >
-              {selectedEntityName}
-            </Badge>
-            <Badge
-              variant={isRunning ? "secondary" : "outline"}
-              className="border-sky-200 bg-white text-sky-700"
-            >
-              {isRunning ? "Running" : "Idle"}
-            </Badge>
           </div>
         </div>
       </CardHeader>
@@ -208,11 +190,6 @@ export function QueryWorkbench({
                     Load preview template
                   </Button>
                 ) : null}
-              </div>
-
-              <div className="text-sm text-slate-500">
-                The preview state is intentionally local so the UI remains fast
-                and easy to swap out for real services later.
               </div>
             </div>
           </TabsContent>
