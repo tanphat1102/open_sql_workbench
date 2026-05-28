@@ -22,22 +22,22 @@ export function formatODataResults<T>(
         return data.results as T[];
       }
 
-      // Tự động nhận diện và sửa lỗi nếu chuỗi RowsJson bị cụt
+      // Detect and repair truncated RowsJson payloads when possible.
       if ("RowsJson" in data && typeof data.RowsJson === "string") {
         const fixedJson = data.RowsJson;
 
         try {
-          // Thử parse chuẩn trước
+          // Try standard parsing first.
           JSON.parse(fixedJson);
         } catch {
           try {
-            // Dùng jsonrepair để tự động khôi phục cấu trúc đối tượng JSON bị dở dang
+            // Use jsonrepair to recover incomplete JSON structures.
             const repaired = jsonrepair(fixedJson);
             const parsed = JSON.parse(repaired);
             data.RowsJson = JSON.stringify(parsed);
             console.warn("Recovered partial RowsJson using jsonrepair");
           } catch (err2) {
-            console.error("SapParser: RowsJson bị hỏng hoàn toàn", err2);
+            console.error("SapParser: RowsJson is not recoverable", err2);
           }
         }
       }

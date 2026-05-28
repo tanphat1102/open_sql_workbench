@@ -57,14 +57,14 @@ async function handleProxy(
 
     const method = req.method;
 
-    // 1. Đọc toàn bộ Cookie mà trình duyệt của Dev gửi lên Next.js
+    // 1. Read the SAP cookies sent by the developer's browser.
     const clientCookies = req.headers.get("cookie") || "";
     const sapCookies = getSapCookieHeader(clientCookies);
 
-    // Nếu dev chưa đăng nhập (không có cookie), chặn lại luôn
+    // Reject unauthenticated requests before proxying to SAP.
     if (!sapCookies) {
       return NextResponse.json(
-        { error: "Chưa đăng nhập hệ thống SAP" },
+        { error: "SAP session is missing" },
         { status: 401 },
       );
     }
@@ -74,9 +74,9 @@ async function handleProxy(
       Accept: req.headers.get("accept") || "application/json",
     };
 
-    // 2. Nếu là lệnh ghi (POST/PUT/DELETE), dùng chính Cookie của Dev để xin CSRF Token mới
+    // 2. For write requests, fetch a fresh CSRF token with the user's SAP cookies.
     if (["POST", "PUT", "DELETE"].includes(method)) {
-      // Vì hệ thống hiện tại chủ yếu dùng ZSQLWB_ODATA_SRV, ta dùng thẳng /$metadata của nó để xin token cho chắc chắn
+      // Use the service metadata endpoint as the stable token source.
       const metadataPath = targetPath.includes("ZSQLWB_ODATA_SRV")
         ? "opu/odata/sap/ZSQLWB_ODATA_SRV/$metadata"
         : targetPath;
@@ -90,7 +90,7 @@ async function handleProxy(
             "X-CSRF-Token": "Fetch",
           },
           params: sapClient ? { "sap-client": sapClient } : undefined,
-          validateStatus: () => true, // Không throw error nếu 4xx/5xx
+          validateStatus: () => true,
         },
       );
       extraHeaders["X-CSRF-Token"] = csrfRes.headers["x-csrf-token"] || "";
@@ -102,7 +102,7 @@ async function handleProxy(
       );
     }
 
-    // 3. Đọc dữ liệu body nếu có. RunQuery thường là POST không có body.
+    // 3. Read the request body when present. RunQuery is usually a bodyless POST.
     const body = ["POST", "PUT", "PATCH"].includes(method)
       ? await req.text()
       : undefined;
@@ -111,7 +111,7 @@ async function handleProxy(
       extraHeaders["Content-Type"] = req.headers.get("content-type") || "";
     }
 
-    // 4. Bắn request sang SAP với tư cách của Dev đang giữ Cookie đó
+    // 4. Forward the request to SAP with the developer's session cookies.
     // Use arraybuffer so we can forward raw bytes (JSON, XML, etc.) unchanged
     const sapResponse = await axios({
       method,
@@ -227,7 +227,7 @@ async function handleProxy(
       }
     }
 
-    return NextResponse.json({ error: "Lỗi truy vấn SAP" }, { status: 500 });
+    return NextResponse.json({ error: "SAP query failed" }, { status: 500 });
   }
 }
 

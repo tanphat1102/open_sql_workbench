@@ -129,7 +129,7 @@ async function parseJsonResponse<T>(response: Response) {
 
   if (!response.ok) {
     throw createSapClientError(
-      extractSapErrorMessage(data, response.status) || "Lỗi khi gọi SAP service",
+      extractSapErrorMessage(data, response.status) || "SAP service request failed",
       response.status,
       data,
     );
@@ -163,7 +163,7 @@ export const sapClient = {
 
     if (!response.ok) {
       throw createSapClientError(
-        text || "Lỗi khi gọi SAP service",
+        text || "SAP service request failed",
         response.status,
         text,
       );

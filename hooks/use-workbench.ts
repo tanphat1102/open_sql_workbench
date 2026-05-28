@@ -58,7 +58,7 @@ export function useWorkbench() {
         setLoadError(
           isLive
             ? null
-            : "Không tải được dữ liệu live từ SAP, đang dùng dữ liệu dự phòng.",
+            : "Unable to load live SAP data. Falling back to sample data.",
         );
         setEntities(liveSnapshot.entities);
         setTemplates(liveSnapshot.templates);
@@ -102,7 +102,7 @@ export function useWorkbench() {
         setLoadError(
           isLive
             ? null
-            : "Không tải được dữ liệu live từ SAP, đang dùng dữ liệu dự phòng.",
+            : "Unable to load live SAP data. Falling back to sample data.",
         );
         setEntities(liveSnapshot.entities);
         setTemplates(liveSnapshot.templates);

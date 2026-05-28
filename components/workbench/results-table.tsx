@@ -72,7 +72,7 @@ export function ResultsTable({ entityName, rows }: ResultsTableProps) {
             />
             <div className="relative">
               <button className="rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent">
-                Tải xuống
+                Download
               </button>
               <div className="absolute right-0 mt-10 hidden w-40 rounded-md border bg-white shadow-md">
                 <button className="w-full px-3 py-2 text-left text-sm">

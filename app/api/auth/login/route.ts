@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
           success: false,
           message: "SAP client is required",
           error: {
-            message: "Nhập SAP client gồm 3 chữ số, ví dụ 324.",
+            message: "Enter a three-digit SAP client, for example 324.",
           },
         },
         { status: 400 },
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     const sapBase = normalizeSapBaseUrl(process.env.SAP_BASE_URL || "");
     const testEndpoint = `${sapBase}/sap/opu/odata/sap/ZSQLWB_ODATA_SRV/$metadata`;
 
-    // Tạo mã Basic Auth từ tài khoản dev nhập vào
+    // Build Basic Auth from the credentials entered by the developer.
     const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 
     console.log(
@@ -146,14 +146,14 @@ export async function POST(req: NextRequest) {
       sapClient,
     );
 
-    // Gọi thử lên OData Endpoint bắt buộc để kiểm tra Basic Auth và lấy Session Cookie
+    // Call the required OData endpoint to verify Basic Auth and receive session cookies.
     const sapResponse = await axios.get(testEndpoint, {
       headers: {
         Authorization: authHeader,
       },
       params: { "sap-client": sapClient },
       responseType: "arraybuffer",
-      validateStatus: () => true, // Không quăng lỗi nếu status >= 400 để tự handle
+      validateStatus: () => true,
     });
 
     const setCookies = sapResponse.headers["set-cookie"] as
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
       status: success ? 200 : sapResponse.status,
       message: success
         ? "SAP login successful"
-        : "Tài khoản hoặc mật khẩu không đúng",
+        : "Invalid username or password",
       raw: toUtf8String(sapResponse.data),
       setCookie: setCookies,
     });
@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
         error: {
           raw: rawMsg,
           message:
-            "Đăng nhập thất bại. Kiểm tra `SAP_LOGIN_URL`/`SAP_BASE_URL`, SAP client và thông tin đăng nhập.",
+            "Login failed. Check `SAP_LOGIN_URL`/`SAP_BASE_URL`, SAP client, and credentials.",
         },
       },
       { status: 500 },
