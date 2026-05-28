@@ -67,7 +67,7 @@ export function SqlEditor({
   return (
     <div
       style={{ height }}
-      className="w-full rounded-2xl border border-sky-100"
+      className="w-full rounded-lg border border-border"
     >
       <div ref={containerRef} style={{ height }} />
     </div>

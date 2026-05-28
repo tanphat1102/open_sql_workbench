@@ -35,10 +35,10 @@ function formatSapDate(rawValue: string) {
 
 export function ActivityFeed({ activity }: ActivityFeedProps) {
   return (
-    <Card className="border-sky-100 bg-white shadow-[0_18px_50px_rgba(15,90,170,0.08)] backdrop-blur">
+    <Card className="fiori-surface">
       <CardHeader className="space-y-1.5">
-        <CardTitle className="text-xl text-slate-900">Activity feed</CardTitle>
-        <CardDescription className="text-slate-600">
+        <CardTitle className="text-xl text-foreground">Activity feed</CardTitle>
+        <CardDescription>
           Track local workbench actions and later swap in server-backed events.
         </CardDescription>
       </CardHeader>
@@ -49,25 +49,25 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
             {activity.map((entry) => (
               <div
                 key={entry.id}
-                className="rounded-2xl border border-sky-100 bg-sky-50 p-4"
+                className="fiori-subtle rounded-lg p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="font-medium text-slate-900">
+                    <div className="font-medium text-foreground">
                       {entry.title}
                     </div>
-                    <div className="mt-1 text-sm leading-6 text-slate-600">
+                    <div className="mt-1 text-sm leading-6 text-muted-foreground">
                       {entry.detail}
                     </div>
                   </div>
                   <Badge
                     variant={entry.tone === "success" ? "secondary" : "outline"}
-                    className="shrink-0 border-sky-200 bg-white text-sky-700"
+                    className="shrink-0 border-[#b8d6ef] bg-white text-primary"
                   >
                     {toneLabelMap[entry.tone]}
                   </Badge>
                 </div>
-                <div className="mt-3 text-xs uppercase tracking-[0.2em] text-sky-700/70">
+                <div className="mt-3 text-xs uppercase tracking-[0.14em] text-primary/75">
                   {formatSapDate(entry.timestampRaw)}
                 </div>
               </div>
