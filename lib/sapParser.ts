@@ -25,19 +25,24 @@ export function formatODataResults<T>(
       // Detect and repair truncated RowsJson payloads when possible.
       if ("RowsJson" in data && typeof data.RowsJson === "string") {
         const fixedJson = data.RowsJson;
+        const trimmedJson = fixedJson.trim();
+
+        if (!trimmedJson) {
+          return data as T;
+        }
 
         try {
           // Try standard parsing first.
-          JSON.parse(fixedJson);
+          JSON.parse(trimmedJson);
         } catch {
           try {
             // Use jsonrepair to recover incomplete JSON structures.
-            const repaired = jsonrepair(fixedJson);
+            const repaired = jsonrepair(trimmedJson);
             const parsed = JSON.parse(repaired);
             data.RowsJson = JSON.stringify(parsed);
             console.warn("Recovered partial RowsJson using jsonrepair");
-          } catch (err2) {
-            console.error("SapParser: RowsJson is not recoverable", err2);
+          } catch {
+            console.warn("SapParser: RowsJson is not recoverable");
           }
         }
       }
