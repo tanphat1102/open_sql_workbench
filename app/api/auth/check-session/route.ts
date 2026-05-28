@@ -52,6 +52,10 @@ function getSapClient(req: NextRequest) {
   return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
 }
 
+function shouldStrictlyVerifySapSession() {
+  return process.env.STRICT_SAP_SESSION_CHECK === "true";
+}
+
 function toSnippet(data: unknown) {
   if (typeof data === "string") {
     return data.slice(0, 500);
@@ -84,6 +88,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { success: false, message: "Missing SAP session cookie" },
         { status: 401 },
+      );
+    }
+
+    if (!shouldStrictlyVerifySapSession()) {
+      return NextResponse.json(
+        {
+          success: true,
+          mode: "cookie-present",
+          client: sapClient,
+        },
+        { status: 200 },
       );
     }
 
