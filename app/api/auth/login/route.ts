@@ -166,6 +166,17 @@ function buildCookieHeaderFromSetCookie(setCookie: string[] | undefined) {
     .join("; ");
 }
 
+function encodeCookieHeader(cookieHeader: string) {
+  return Buffer.from(cookieHeader, "utf8").toString("base64url");
+}
+
+function isSecureRequest(req: NextRequest) {
+  return (
+    req.headers.get("x-forwarded-proto") === "https" ||
+    req.nextUrl.protocol === "https:"
+  );
+}
+
 function isMetadataResponse(data: unknown) {
   const raw = toUtf8String(data);
 
@@ -267,6 +278,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (success) {
+      response.cookies.set("OSWB_SAP_COOKIE", encodeCookieHeader(cookieHeader), {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: true,
+        secure: isSecureRequest(req),
+      });
       response.cookies.set("OSWB_SAP_CLIENT", sapClient, {
         path: "/",
         sameSite: "lax",

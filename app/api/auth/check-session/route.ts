@@ -48,12 +48,22 @@ function getSapCookieHeader(cookieHeader: string) {
     .join("; ");
 }
 
-function getSapClient(req: NextRequest) {
-  return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
+function getStoredSapCookieHeader(req: NextRequest) {
+  const encodedCookieHeader = req.cookies.get("OSWB_SAP_COOKIE")?.value;
+
+  if (!encodedCookieHeader) {
+    return "";
+  }
+
+  try {
+    return Buffer.from(encodedCookieHeader, "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
 }
 
-function shouldStrictlyVerifySapSession() {
-  return process.env.STRICT_SAP_SESSION_CHECK === "true";
+function getSapClient(req: NextRequest) {
+  return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
 }
 
 function toSnippet(data: unknown) {
@@ -81,24 +91,14 @@ function toSnippet(data: unknown) {
 export async function GET(req: NextRequest) {
   try {
     const cookieHeader = req.headers.get("cookie") || "";
-    const sapCookies = getSapCookieHeader(cookieHeader);
+    const sapCookies =
+      getStoredSapCookieHeader(req) || getSapCookieHeader(cookieHeader);
     const sapClient = getSapClient(req);
 
     if (!sapCookies) {
       return NextResponse.json(
         { success: false, message: "Missing SAP session cookie" },
         { status: 401 },
-      );
-    }
-
-    if (!shouldStrictlyVerifySapSession()) {
-      return NextResponse.json(
-        {
-          success: true,
-          mode: "cookie-present",
-          client: sapClient,
-        },
-        { status: 200 },
       );
     }
 

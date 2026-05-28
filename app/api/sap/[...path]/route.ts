@@ -53,6 +53,20 @@ function getSapCookieHeader(cookieHeader: string) {
     .join("; ");
 }
 
+function getStoredSapCookieHeader(req: NextRequest) {
+  const encodedCookieHeader = req.cookies.get("OSWB_SAP_COOKIE")?.value;
+
+  if (!encodedCookieHeader) {
+    return "";
+  }
+
+  try {
+    return Buffer.from(encodedCookieHeader, "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
 function getSapClient(req: NextRequest) {
   return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
 }
@@ -105,7 +119,8 @@ async function handleProxy(
 
     // 1. Read the SAP cookies sent by the developer's browser.
     const clientCookies = req.headers.get("cookie") || "";
-    const sapCookies = getSapCookieHeader(clientCookies);
+    const sapCookies =
+      getStoredSapCookieHeader(req) || getSapCookieHeader(clientCookies);
 
     // Reject unauthenticated requests before proxying to SAP.
     if (!sapCookies) {
