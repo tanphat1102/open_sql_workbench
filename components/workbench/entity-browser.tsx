@@ -42,17 +42,19 @@ export function EntityBrowser({
     entities[0];
 
   return (
-    <Card className="border-sky-100 bg-white shadow-[0_18px_50px_rgba(15,90,170,0.08)] backdrop-blur">
-      <CardHeader className="space-y-1.5">
-        <CardTitle className="text-xl text-slate-900">Schema browser</CardTitle>
-        <CardDescription className="text-slate-600">
-          Browse available entity sets, key fields, and metadata at a glance.
+    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
+      <CardHeader className="border-b border-border px-3 py-2">
+        <CardTitle className="text-base text-foreground">
+          Object Explorer
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Entity sets and key fields
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <ScrollArea className="h-75 pr-4">
-          <div className="space-y-3">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-1 p-2">
             {entities.map((entity) => {
               const isSelected = entity.name === selectedEntityName;
 
@@ -63,38 +65,23 @@ export function EntityBrowser({
                   variant={isSelected ? "secondary" : "outline"}
                   onClick={() => onSelectEntity(entity.name)}
                   className={cn(
-                    "h-auto w-full justify-start rounded-2xl border px-4 py-4 text-left transition",
+                    "h-auto w-full justify-start rounded-md border px-3 py-2 text-left transition",
                     isSelected
-                      ? "border-sky-300 bg-sky-50 text-slate-900 hover:bg-sky-50"
-                      : "border-sky-100 bg-white text-slate-900 hover:bg-sky-50 hover:text-slate-900",
+                      ? "border-primary/35 bg-accent text-foreground hover:bg-accent"
+                      : "border-border bg-white text-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  <div className="w-full space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium">{entity.name}</div>
-                        <div className="mt-1 text-sm leading-6 text-slate-600">
-                          {entity.description}
-                        </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="border-sky-200 bg-sky-50 text-sky-700"
-                      >
-                        {entity.recordCount} rows
-                      </Badge>
+                  <div className="w-full">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="truncate font-medium">{entity.name}</div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {entity.recordCount}
+                      </span>
                     </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {entity.tags.map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="secondary"
-                          className="bg-sky-50 text-sky-700"
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
+                      {entity.keyFields.length
+                        ? `Keys: ${entity.keyFields.join(", ")}`
+                        : entity.description}
                     </div>
                   </div>
                 </Button>
@@ -103,34 +90,31 @@ export function EntityBrowser({
           </div>
         </ScrollArea>
 
-        <Separator className="bg-sky-100" />
+        <Separator className="bg-border" />
 
         {selectedEntity ? (
-          <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50 p-4">
-            <div className="flex items-center justify-between gap-4">
+          <div className="space-y-3 p-3">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm uppercase tracking-[0.24em] text-sky-600">
+                <div className="text-xs uppercase tracking-[0.12em] text-primary">
                   Selected entity
                 </div>
-                <div className="mt-1 font-medium text-slate-900">
+                <div className="mt-1 truncate font-medium text-foreground">
                   {selectedEntity.name}
                 </div>
               </div>
-              <Badge
-                variant="outline"
-                className="border-sky-200 bg-white text-sky-700"
-              >
+              <Badge variant="outline" className="border-[#b8d6ef] text-primary">
                 {selectedEntity.keyFields.length} key fields
               </Badge>
             </div>
 
-            <div className="space-y-2 text-sm text-slate-600">
+            <div className="space-y-2 text-xs text-muted-foreground">
               <div>
-                <span className="text-slate-500">Keys: </span>
+                <span className="text-muted-foreground">Keys: </span>
                 {selectedEntity.keyFields.join(", ")}
               </div>
               <div>
-                <span className="text-slate-500">Last sync: </span>
+                <span className="text-muted-foreground">Last sync: </span>
                 {formatSapDate(selectedEntity.lastSyncedRaw)}
               </div>
             </div>

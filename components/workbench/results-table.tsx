@@ -55,25 +55,23 @@ export function ResultsTable({ entityName, rows }: ResultsTableProps) {
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
 
   return (
-    <Card className="border-sky-100 bg-white shadow-[0_18px_50px_rgba(15,90,170,0.08)] backdrop-blur">
-      <CardHeader className="space-y-1.5">
-        <div className="flex items-center justify-between">
+    <Card className="fiori-surface min-h-0 gap-0 py-0">
+      <CardHeader className="border-b border-border px-3 py-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <CardTitle className="text-xl text-slate-900">
-              Result Grid
-            </CardTitle>
-            <CardDescription className="text-slate-600">
-              Latest rows for {entityName}. Use the toolbar to export or search.
+            <CardTitle className="text-base text-foreground">Results</CardTitle>
+            <CardDescription className="text-xs">
+              {entityName} | {rows.length} rows
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <input
               placeholder="Search"
-              className="rounded-lg border border-sky-100 px-3 py-2 text-sm text-slate-700"
+              className="rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
               onChange={() => {}}
             />
             <div className="relative">
-              <button className="rounded-lg border border-sky-100 bg-white px-3 py-2 text-sm text-sky-700">
+              <button className="rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent">
                 Tải xuống
               </button>
               <div className="absolute right-0 mt-10 hidden w-40 rounded-md border bg-white shadow-md">
@@ -89,20 +87,20 @@ export function ResultsTable({ entityName, rows }: ResultsTableProps) {
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="min-h-0 flex-1 p-0">
         {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50 p-8 text-center text-sm text-slate-600">
+          <div className="m-3 rounded-lg border border-dashed border-[#b8d6ef] bg-accent p-8 text-center text-sm text-muted-foreground">
             No rows loaded yet. Run a query or switch to another entity.
           </div>
         ) : (
-          <ScrollArea className="h-90 rounded-2xl border border-sky-100 bg-white">
+          <ScrollArea className="h-full bg-white">
             <Table>
               <TableHeader>
-                <TableRow className="border-sky-100 hover:bg-transparent">
+                <TableRow className="border-border hover:bg-transparent">
                   {columns.map((column) => (
                     <TableHead
                       key={column}
-                      className="border-b border-sky-100 px-4 py-3 text-xs uppercase tracking-[0.2em] text-sky-700/80"
+                      className="sticky top-0 border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
                     >
                       {column}
                     </TableHead>
@@ -113,12 +111,12 @@ export function ResultsTable({ entityName, rows }: ResultsTableProps) {
                 {rows.map((row, rowIndex) => (
                   <TableRow
                     key={`${entityName}-${rowIndex}`}
-                    className="border-sky-100"
+                    className="border-border hover:bg-accent/40"
                   >
                     {columns.map((column) => (
                       <TableCell
                         key={column}
-                        className="px-4 py-3 text-slate-700"
+                        className="px-3 py-2 text-foreground"
                       >
                         {formatCellValue(row[column])}
                       </TableCell>

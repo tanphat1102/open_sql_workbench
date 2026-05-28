@@ -24,6 +24,84 @@ type SapClientError = Error & {
   body: unknown;
 };
 
+function getNestedValue(source: unknown, path: string[]) {
+  return path.reduce<unknown>((current, key) => {
+    if (current && typeof current === "object" && key in current) {
+      return (current as Record<string, unknown>)[key];
+    }
+
+    return undefined;
+  }, source);
+}
+
+function getStringValue(source: unknown, path: string[]) {
+  const value = getNestedValue(source, path);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function getXmlTagValue(xml: string, tagName: string) {
+  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`<${escapedTag}\\b[^>]*>([\\s\\S]*?)<\\/${escapedTag}>`, "i").exec(
+    xml,
+  );
+
+  return match?.[1]?.replace(/<[^>]+>/g, "").trim();
+}
+
+function extractSapErrorMessage(body: unknown, status: number) {
+  if (typeof body === "string") {
+    const code = getXmlTagValue(body, "code");
+    const message = getXmlTagValue(body, "message");
+    const transactionId = getXmlTagValue(body, "transactionid");
+    const timestamp = getXmlTagValue(body, "timestamp");
+
+    return [
+      `HTTP ${status}`,
+      code ? `Code: ${code}` : null,
+      message ? `Message: ${message}` : null,
+      transactionId ? `Transaction ID: ${transactionId}` : null,
+      timestamp ? `Timestamp: ${timestamp}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const code = getStringValue(body, ["error", "code"]);
+  const message =
+    getStringValue(body, ["error", "message", "value"]) ??
+    getStringValue(body, ["error", "message"]);
+  const transactionId = getStringValue(body, [
+    "error",
+    "innererror",
+    "transactionid",
+  ]);
+  const timestamp = getStringValue(body, ["error", "innererror", "timestamp"]);
+  const sapTransaction = getStringValue(body, [
+    "error",
+    "innererror",
+    "Error_Resolution",
+    "SAP_Transaction",
+  ]);
+  const sapNote = getStringValue(body, [
+    "error",
+    "innererror",
+    "Error_Resolution",
+    "SAP_Note",
+  ]);
+
+  return [
+    `HTTP ${status}`,
+    code ? `Code: ${code}` : null,
+    message ? `Message: ${message}` : null,
+    transactionId ? `Transaction ID: ${transactionId}` : null,
+    timestamp ? `Timestamp: ${timestamp}` : null,
+    sapTransaction ? `SAP Transaction: ${sapTransaction}` : null,
+    sapNote ? `SAP Note: ${sapNote}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function createSapClientError(message: string, status: number, body: unknown) {
   const error = new Error(message) as SapClientError;
   error.status = status;
@@ -36,7 +114,7 @@ async function parseJsonResponse<T>(response: Response) {
   let data: unknown = null;
   try {
     data = text ? JSON.parse(text) : null;
-  } catch (e) {
+  } catch {
     try {
       if (text) {
         const repaired = jsonrepair(text);
@@ -51,7 +129,7 @@ async function parseJsonResponse<T>(response: Response) {
 
   if (!response.ok) {
     throw createSapClientError(
-      typeof data === "string" ? data : "Lỗi khi gọi SAP service",
+      extractSapErrorMessage(data, response.status) || "Lỗi khi gọi SAP service",
       response.status,
       data,
     );

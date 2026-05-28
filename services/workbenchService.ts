@@ -643,7 +643,10 @@ export const workbenchService = {
           sapStatus?: string;
         };
 
-        if (typedError.status === 401 || typedError.sapStatus) {
+        if (
+          (typedError.status !== undefined && typedError.status >= 400) ||
+          typedError.sapStatus
+        ) {
           throw error;
         }
       }

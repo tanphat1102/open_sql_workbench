@@ -2,26 +2,20 @@
 
 import Link from "next/link";
 import {
-  ArrowRight,
-  DatabaseZap,
   RefreshCw,
   TerminalSquare,
 } from "lucide-react";
 
-import { ActivityFeed } from "@/components/workbench/activity-feed";
 import { EntityBrowser } from "@/components/workbench/entity-browser";
 import { QueryWorkbench } from "@/components/workbench/query-workbench";
 import { ResultsTable } from "@/components/workbench/results-table";
 import { ActionOutput } from "@/components/workbench/action-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { useWorkbench } from "@/hooks/use-workbench";
 
 export function WorkbenchDashboard() {
   const {
-    metrics,
     selectedEntity,
     selectedEntityName,
     entities,
@@ -39,60 +33,62 @@ export function WorkbenchDashboard() {
   } = useWorkbench();
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(60,130,246,0.13),transparent_35%),radial-gradient(circle_at_right,rgba(14,165,233,0.1),transparent_28%),linear-gradient(180deg,#f8fbff_0%,#eef5fb_100%)] px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
-      <section className="flex w-full flex-col gap-4">
-        <header className="rounded-[1.75rem] border border-sky-100 bg-white/85 p-4 shadow-[0_18px_50px_rgba(15,90,170,0.08)] backdrop-blur md:p-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="bg-sky-500 text-white hover:bg-sky-400">
-                  Open SQL Workbench
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3 xl:justify-end">
-              <Button
-                asChild
-                variant="outline"
-                className="border-sky-200 bg-white text-sky-800 hover:bg-sky-50 hover:text-sky-900"
-              >
-                <Link href="/login">
-                  <TerminalSquare />
-                  Re-authenticate
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                onClick={runQuery}
-                className="bg-sky-600 text-white hover:bg-sky-500"
-              >
-                <RefreshCw />
-                Run preview
-              </Button>
-            </div>
+    <main className="fiori-page min-h-screen px-3 py-3 text-sm sm:px-4">
+      <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[1800px] flex-col gap-3">
+        <header className="fiori-shell-bar flex flex-col gap-2 rounded-lg px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
+              Open SQL Workbench
+            </Badge>
+            <span className="text-muted-foreground">
+              {selectedEntityName || "No entity selected"}
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span className="text-muted-foreground">
+              {resultRows.length} result rows
+            </span>
           </div>
 
-          <Separator className="my-4 bg-sky-100" />
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Button
+              asChild
+              variant="outline"
+              className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+            >
+              <Link href="/login">
+                <TerminalSquare />
+                Re-authenticate
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              onClick={runQuery}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <RefreshCw />
+              Execute
+            </Button>
+          </div>
         </header>
 
-        <div className="grid min-h-[calc(100vh-14rem)] gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.45fr)_minmax(320px,0.85fr)]">
-          <div className="space-y-4">
+        <div className="grid flex-1 gap-3 lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="min-h-0">
             <EntityBrowser
               entities={entities}
               selectedEntityName={selectedEntityName}
               onSelectEntity={handleEntityChange}
             />
-            <ActivityFeed activity={activityEntries} />
-          </div>
+          </aside>
 
-          <div className="space-y-4">
+          <div className="grid min-h-0 grid-rows-[auto_minmax(260px,1fr)_220px] gap-3">
             <QueryWorkbench
               selectedEntityName={selectedEntityName}
+              entities={entities}
               queryText={queryText}
               templates={templates}
               isRunning={isRunning}
               onQueryTextChange={setQueryText}
+              onSelectEntity={handleEntityChange}
               onApplyTemplate={applyTemplate}
               onRunQuery={runQuery}
               needLogin={needLogin}
@@ -106,22 +102,6 @@ export function WorkbenchDashboard() {
             <ActionOutput activity={activityEntries} />
           </div>
         </div>
-
-        <footer className="flex flex-col gap-3 border-t border-sky-100 py-2 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
-          <p>
-            Keep the SAP calls behind{" "}
-            <span className="text-slate-900">/api/sap/[...path]</span> and
-            normalize OData payloads in{" "}
-            <span className="text-slate-900">lib/sapParser.ts</span>.
-          </p>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sky-700 transition hover:text-sky-600"
-          >
-            Back to landing
-            <ArrowRight className="size-4" />
-          </Link>
-        </footer>
       </section>
     </main>
   );

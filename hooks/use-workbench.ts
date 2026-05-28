@@ -12,6 +12,15 @@ function buildTemplateQuery(template: WorkbenchTemplate, entityName: string) {
   return template.query.replace("<entity>", entityName);
 }
 
+function getErrorStatus(error: unknown) {
+  return typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+    ? error.status
+    : undefined;
+}
+
 export function useWorkbench() {
   const [selectedEntityName, setSelectedEntityName] = useState(defaultEntity);
   const [queryText, setQueryText] = useState(
@@ -75,8 +84,8 @@ export function useWorkbench() {
             return nextName;
           });
         }
-      } catch (err: any) {
-        if (err?.status === 401) {
+      } catch (err) {
+        if (getErrorStatus(err) === 401) {
           setNeedLogin(true);
           setIsLoadingSnapshot(false);
           return;
@@ -210,8 +219,7 @@ export function useWorkbench() {
         ]);
       } catch (error) {
         // If auth error, prompt for login
-        const err: any = error;
-        if (err?.status === 401) {
+        if (getErrorStatus(error) === 401) {
           setNeedLogin(true);
         }
         setActivityEntries((currentEntries) => [

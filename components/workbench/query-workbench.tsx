@@ -5,12 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Textarea removed in favor of the Monaco-based SqlEditor
 import dynamic from "next/dynamic";
 
@@ -20,18 +15,19 @@ const SqlEditor = dynamic(
     ssr: false,
   },
 );
-import { Separator } from "@/components/ui/separator";
-import type { WorkbenchTemplate } from "@/types/workbench";
+import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { authService } from "@/services/authService";
 
 type QueryWorkbenchProps = {
   selectedEntityName: string;
+  entities: WorkbenchEntity[];
   queryText: string;
   templates: WorkbenchTemplate[];
   isRunning: boolean;
   onQueryTextChange: (value: string) => void;
+  onSelectEntity: (entityName: string) => void;
   onApplyTemplate: (template: WorkbenchTemplate) => void;
   onRunQuery: () => void;
   needLogin?: boolean;
@@ -40,16 +36,18 @@ type QueryWorkbenchProps = {
 
 export function QueryWorkbench({
   selectedEntityName,
+  entities = [],
   queryText,
-  templates,
+  templates = [],
   isRunning,
   onQueryTextChange,
+  onSelectEntity,
   onApplyTemplate,
   onRunQuery,
   needLogin,
   setNeedLogin,
 }: QueryWorkbenchProps) {
-  const primaryTemplate = templates[0];
+  const [client, setClient] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -58,7 +56,7 @@ export function QueryWorkbench({
     e?.preventDefault();
     setIsLoggingIn(true);
     try {
-      await authService.login({ username, password });
+      await authService.login({ username, password, client });
 
       if (needLogin) {
         // Close modal and retry query
@@ -74,22 +72,36 @@ export function QueryWorkbench({
   }
 
   return (
-    <Card className="border-sky-100 bg-white shadow-[0_18px_50px_rgba(15,90,170,0.08)] backdrop-blur">
-      <CardHeader className="space-y-4">
+    <Card className="fiori-surface gap-0 py-0">
+      <CardContent className="space-y-0 p-0">
         {needLogin ? (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
-            <form onSubmit={handleLogin} className="flex items-center gap-3">
-              <div className="flex gap-2">
+          <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+            <form
+              onSubmit={handleLogin}
+              className="flex flex-col gap-2 lg:flex-row lg:items-center"
+            >
+              <div className="text-sm font-medium">SAP session required</div>
+              <div className="flex flex-1 flex-wrap gap-2">
+                <Input
+                  placeholder="Client"
+                  value={client}
+                  onChange={(e) => setClient(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={3}
+                  required
+                />
                 <Input
                   placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  required
                 />
                 <Input
                   placeholder="Password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  required
                 />
                 <Button type="submit" className="bg-amber-600 text-white">
                   {isLoggingIn ? "Signing..." : "Sign in"}
@@ -105,131 +117,75 @@ export function QueryWorkbench({
             </form>
           </div>
         ) : null}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-tl-xl rounded-bl-xl border-r border-sky-100 bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
-              Truy vấn 1
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" className="text-slate-600">
-                Định dạng SQL
-              </Button>
-              <Button variant="ghost" className="text-slate-600">
-                Lưu Truy vấn
-              </Button>
-              <Button variant="ghost" className="text-slate-600">
-                Quản lý
-              </Button>
-            </div>
+
+        <div className="flex flex-col gap-2 border-b border-border bg-[#f7fbff] px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
+              Query 1
+            </Badge>
+            <label className="text-sm text-muted-foreground" htmlFor="entity-set">
+              Entity
+            </label>
+            <select
+              id="entity-set"
+              value={selectedEntityName}
+              onChange={(event) => onSelectEntity(event.target.value)}
+              className="h-8 min-w-56 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
+            >
+              {entities.map((entity) => (
+                <option key={entity.name} value={entity.name}>
+                  {entity.name}
+                </option>
+              ))}
+            </select>
+            {templates.length > 0 ? (
+              <select
+                defaultValue=""
+                onChange={(event) => {
+                  const template = templates.find(
+                    (item) => item.id === event.target.value,
+                  );
+
+                  if (template) {
+                    onApplyTemplate(template);
+                  }
+                }}
+                className="h-8 min-w-48 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
+              >
+                <option value="" disabled>
+                  Load template
+                </option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:justify-end">
+            <div className="text-xs text-muted-foreground">
+              {queryText.length} chars
+            </div>
             <Button
               onClick={onRunQuery}
-              className="bg-sky-600 text-white hover:bg-sky-500"
+              disabled={isRunning}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              Thực thi Truy vấn
+              {isRunning ? "Executing..." : "Execute"}
             </Button>
           </div>
         </div>
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1.5">
-            <CardTitle className="text-xl text-slate-900">
-              Query workspace
-            </CardTitle>
-          </div>
+
+        <div className="p-0">
+          {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+          {/* @ts-ignore */}
+          <SqlEditor
+            value={queryText}
+            onChange={(v: string) => onQueryTextChange(v)}
+            height="340px"
+          />
         </div>
-      </CardHeader>
-
-      <CardContent className="space-y-5">
-        <Tabs defaultValue="builder" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 rounded-2xl border border-sky-100 bg-sky-50 p-1">
-            <TabsTrigger value="builder" className="rounded-xl">
-              Builder
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="rounded-xl">
-              Templates
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="builder" className="mt-5 space-y-5 outline-none">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-slate-500">
-                <span>Query draft</span>
-                <span>{queryText.length} characters</span>
-              </div>
-              <div>
-                {/* Monaco-based SQL editor */}
-                {/* SqlEditor is client-only via dynamic import */}
-                {/* height set for comfortable workbench surface */}
-                {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-                {/* @ts-ignore */}
-                <SqlEditor
-                  value={queryText}
-                  onChange={(v: string) => onQueryTextChange(v)}
-                  height="320px"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={onRunQuery}
-                  disabled={isRunning}
-                  className="bg-sky-600 text-white hover:bg-sky-500"
-                >
-                  {isRunning ? "Executing..." : "Run query"}
-                </Button>
-                {primaryTemplate ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => onApplyTemplate(primaryTemplate)}
-                    className="border-sky-200 bg-white text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                  >
-                    Load preview template
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="templates" className="mt-5 outline-none">
-            <ScrollArea className="h-72.5 pr-4">
-              <div className="space-y-3">
-                {templates.map((template, index) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => onApplyTemplate(template)}
-                    className="w-full rounded-2xl border border-sky-100 bg-white p-4 text-left transition hover:border-sky-200 hover:bg-sky-50"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-medium text-slate-900">
-                          {template.name}
-                        </div>
-                        <div className="mt-1 text-sm leading-6 text-slate-600">
-                          {template.description}
-                        </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="border-sky-200 bg-sky-50 text-sky-700"
-                      >
-                        #{index + 1}
-                      </Badge>
-                    </div>
-                    <Separator className="my-3 bg-sky-100" />
-                    <code className="block whitespace-pre-wrap wrap-break-word text-sm text-sky-700">
-                      {template.query}
-                    </code>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
       </CardContent>
     </Card>
   );
