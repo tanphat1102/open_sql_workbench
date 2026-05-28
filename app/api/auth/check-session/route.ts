@@ -23,6 +23,21 @@ function getSapCookieHeader(cookieHeader: string) {
   return cookieHeader
     .split(";")
     .map((cookie) => cookie.trim())
+    .map((cookie) => {
+      const separatorIndex = cookie.indexOf("=");
+      const name = separatorIndex > 0 ? cookie.slice(0, separatorIndex) : cookie;
+      const value = separatorIndex > 0 ? cookie.slice(separatorIndex + 1) : "";
+
+      if (
+        name.startsWith("SAP_SESSIONID") ||
+        name.startsWith("MYSAPSSO2") ||
+        name.startsWith("SAPSSO2")
+      ) {
+        return `${name}=${value.replace(/%25/g, "%")}`;
+      }
+
+      return cookie;
+    })
     .filter(
       (cookie) =>
         cookie.startsWith("SAP_") ||
@@ -35,6 +50,28 @@ function getSapCookieHeader(cookieHeader: string) {
 
 function getSapClient(req: NextRequest) {
   return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
+}
+
+function toSnippet(data: unknown) {
+  if (typeof data === "string") {
+    return data.slice(0, 500);
+  }
+
+  if (Buffer.isBuffer(data)) {
+    return data.toString("utf8").slice(0, 500);
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return Buffer.from(data).toString("utf8").slice(0, 500);
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+      .toString("utf8")
+      .slice(0, 500);
+  }
+
+  return undefined;
 }
 
 export async function GET(req: NextRequest) {
@@ -74,6 +111,8 @@ export async function GET(req: NextRequest) {
         success: false,
         message: "SAP session is not valid",
         status: response.status,
+        client: sapClient,
+        detail: toSnippet(response.data),
       },
       { status: 401 },
     );

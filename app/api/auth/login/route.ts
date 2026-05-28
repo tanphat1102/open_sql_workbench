@@ -40,8 +40,34 @@ function appendSapCookies(
   }
 
   setCookie.forEach((cookieStr: string) => {
-    const cleanCookie = cookieStr.replace(/path=\/[^;]*/i, "path=/");
-    response.headers.append("Set-Cookie", cleanCookie);
+    const [nameValue, ...attributes] = cookieStr.split(";");
+    const separatorIndex = nameValue.indexOf("=");
+
+    if (separatorIndex <= 0) {
+      return;
+    }
+
+    const name = nameValue.slice(0, separatorIndex).trim();
+    const value = nameValue.slice(separatorIndex + 1).trim();
+    const preservedAttributes = attributes
+      .map((attribute) => attribute.trim())
+      .filter((attribute) => {
+        const lowerAttribute = attribute.toLowerCase();
+        return (
+          attribute &&
+          !lowerAttribute.startsWith("domain=") &&
+          !lowerAttribute.startsWith("path=") &&
+          lowerAttribute !== "secure" &&
+          !lowerAttribute.startsWith("samesite=")
+        );
+      });
+
+    response.headers.append(
+      "Set-Cookie",
+      [`${name}=${value}`, "Path=/", "SameSite=Lax", ...preservedAttributes].join(
+        "; ",
+      ),
+    );
   });
 }
 
@@ -129,6 +155,28 @@ function normalizeSapClient(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function buildCookieHeaderFromSetCookie(setCookie: string[] | undefined) {
+  if (!setCookie || setCookie.length === 0) {
+    return "";
+  }
+
+  return setCookie
+    .map((cookieStr) => cookieStr.split(";")[0]?.trim())
+    .filter(Boolean)
+    .join("; ");
+}
+
+function isMetadataResponse(data: unknown) {
+  const raw = toUtf8String(data);
+
+  return Boolean(
+    raw &&
+      (raw.includes("<edmx:Edmx") ||
+        raw.includes("<edmx:DataServices") ||
+        raw.includes("EntityContainer")),
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { username, password, client } = await req.json();
@@ -182,17 +230,39 @@ export async function POST(req: NextRequest) {
         c.toUpperCase().includes("MYSAPSSO2") ||
         c.toUpperCase().includes("SAPSSO2"),
     );
+    const cookieHeader = buildCookieHeaderFromSetCookie(setCookies);
+    const sessionCheck =
+      sapResponse.status >= 200 &&
+      sapResponse.status < 400 &&
+      hasSessionCookie &&
+      cookieHeader
+        ? await axios.get(testEndpoint, {
+            headers: {
+              Cookie: cookieHeader,
+              Accept: "application/xml, text/xml, */*",
+            },
+            params: { "sap-client": sapClient },
+            responseType: "arraybuffer",
+            validateStatus: () => true,
+          })
+        : null;
 
     const success =
-      sapResponse.status >= 200 && sapResponse.status < 400 && !!hasSessionCookie;
+      sapResponse.status >= 200 &&
+      sapResponse.status < 400 &&
+      !!hasSessionCookie &&
+      isMetadataResponse(sapResponse.data) &&
+      !!sessionCheck &&
+      sessionCheck.status >= 200 &&
+      sessionCheck.status < 400;
 
     const response = createLoginResponse({
       success,
-      status: success ? 200 : sapResponse.status,
+      status: success ? 200 : (sessionCheck?.status ?? sapResponse.status),
       message: success
         ? "SAP login successful"
-        : "Invalid username or password",
-      raw: toUtf8String(sapResponse.data),
+        : "SAP login did not produce a valid reusable session",
+      raw: toUtf8String(sessionCheck?.data ?? sapResponse.data),
       setCookie: setCookies,
     });
 

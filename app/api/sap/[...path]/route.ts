@@ -28,6 +28,21 @@ function getSapCookieHeader(cookieHeader: string) {
   return cookieHeader
     .split(";")
     .map((cookie) => cookie.trim())
+    .map((cookie) => {
+      const separatorIndex = cookie.indexOf("=");
+      const name = separatorIndex > 0 ? cookie.slice(0, separatorIndex) : cookie;
+      const value = separatorIndex > 0 ? cookie.slice(separatorIndex + 1) : "";
+
+      if (
+        name.startsWith("SAP_SESSIONID") ||
+        name.startsWith("MYSAPSSO2") ||
+        name.startsWith("SAPSSO2")
+      ) {
+        return `${name}=${value.replace(/%25/g, "%")}`;
+      }
+
+      return cookie;
+    })
     .filter(
       (cookie) =>
         cookie.startsWith("SAP_") ||
@@ -40,6 +55,37 @@ function getSapCookieHeader(cookieHeader: string) {
 
 function getSapClient(req: NextRequest) {
   return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
+}
+
+function appendSapCookie(response: NextResponse, cookieStr: string) {
+  const [nameValue, ...attributes] = cookieStr.split(";");
+  const separatorIndex = nameValue.indexOf("=");
+
+  if (separatorIndex <= 0) {
+    return;
+  }
+
+  const name = nameValue.slice(0, separatorIndex).trim();
+  const value = nameValue.slice(separatorIndex + 1).trim();
+  const preservedAttributes = attributes
+    .map((attribute) => attribute.trim())
+    .filter((attribute) => {
+      const lowerAttribute = attribute.toLowerCase();
+      return (
+        attribute &&
+        !lowerAttribute.startsWith("domain=") &&
+        !lowerAttribute.startsWith("path=") &&
+        lowerAttribute !== "secure" &&
+        !lowerAttribute.startsWith("samesite=")
+      );
+    });
+
+  response.headers.append(
+    "Set-Cookie",
+    [`${name}=${value}`, "Path=/", "SameSite=Lax", ...preservedAttributes].join(
+      "; ",
+    ),
+  );
 }
 
 async function handleProxy(
@@ -160,8 +206,7 @@ async function handleProxy(
     // If SAP set cookies, forward them individually
     const sapNewCookies = (sapResponse.headers["set-cookie"] as string[]) || [];
     sapNewCookies.forEach((cookieStr: string) => {
-      const cleanCookie = cookieStr.replace(/path=\/[^;]*/i, "path=/");
-      response.headers.append("Set-Cookie", cleanCookie);
+      appendSapCookie(response, cookieStr);
     });
 
     return response;
@@ -217,8 +262,7 @@ async function handleProxy(
         const setCookies =
           (axiosError.response.headers?.["set-cookie"] as string[]) || [];
         setCookies.forEach((cookieStr: string) => {
-          const cleanCookie = cookieStr.replace(/path=\/[^;]*/i, "path=/");
-          resp.headers.append("Set-Cookie", cleanCookie);
+          appendSapCookie(resp, cookieStr);
         });
 
         return resp;
