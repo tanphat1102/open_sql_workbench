@@ -38,6 +38,10 @@ function getSapCookieHeader(cookieHeader: string) {
     .join("; ");
 }
 
+function getSapClient(req: NextRequest) {
+  return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
+}
+
 async function handleProxy(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -49,6 +53,7 @@ async function handleProxy(
     const queryString = searchParams.toString();
     const sapBaseUrl = process.env.SAP_BASE_URL || "";
     const fullTargetUrl = buildTargetUrl(sapBaseUrl, targetPath, queryString);
+    const sapClient = getSapClient(req);
 
     const method = req.method;
 
@@ -84,7 +89,7 @@ async function handleProxy(
             Accept: req.headers.get("accept") || "application/json",
             "X-CSRF-Token": "Fetch",
           },
-          params: { "sap-client": process.env.SAP_CLIENT },
+          params: sapClient ? { "sap-client": sapClient } : undefined,
           validateStatus: () => true, // Không throw error nếu 4xx/5xx
         },
       );
@@ -113,7 +118,7 @@ async function handleProxy(
       url: fullTargetUrl,
       data: body && body.length > 0 ? body : undefined,
       headers: extraHeaders,
-      params: { "sap-client": process.env.SAP_CLIENT },
+      params: sapClient ? { "sap-client": sapClient } : undefined,
       responseType: "arraybuffer",
       validateStatus: () => true,
     });

@@ -1,6 +1,7 @@
 export type SapCredentials = {
   username: string;
   password: string;
+  client: string;
 };
 
 export type SapLoginResponse = {

@@ -11,21 +11,6 @@ type SapLoginErrorEnvelope = {
   };
 };
 
-function extractCookieHeader(
-  setCookie: string[] | undefined,
-): string | undefined {
-  if (!setCookie || setCookie.length === 0) {
-    return undefined;
-  }
-
-  return setCookie.map((cookie) => cookie.split(";")[0]).join("; ");
-}
-
-function extractXsrfToken(html: string): string | undefined {
-  const match = html.match(/name="sap-login-XSRF"[^>]*value="([^"]+)"/i);
-  return match?.[1];
-}
-
 function extractSapErrorMessage(payload: unknown): string {
   if (!payload || typeof payload !== "object") {
     return typeof payload === "string" ? payload : "Unknown SAP error";
@@ -126,13 +111,30 @@ function normalizeSapBaseUrl(value: string) {
   return trimmed;
 }
 
+function normalizeSapClient(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { username, password } = await req.json();
+    const { username, password, client } = await req.json();
+    const sapClient = normalizeSapClient(client);
+
+    if (!sapClient || !/^\d{3}$/.test(sapClient)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "SAP client is required",
+          error: {
+            message: "Nhập SAP client gồm 3 chữ số, ví dụ 324.",
+          },
+        },
+        { status: 400 },
+      );
+    }
 
     const sapBase = normalizeSapBaseUrl(process.env.SAP_BASE_URL || "");
     const testEndpoint = `${sapBase}/sap/opu/odata/sap/ZSQLWB_ODATA_SRV/$metadata`;
-    const sapClient = process.env.SAP_CLIENT;
 
     // Tạo mã Basic Auth từ tài khoản dev nhập vào
     const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -149,7 +151,7 @@ export async function POST(req: NextRequest) {
       headers: {
         Authorization: authHeader,
       },
-      params: sapClient ? { "sap-client": sapClient } : undefined,
+      params: { "sap-client": sapClient },
       responseType: "arraybuffer",
       validateStatus: () => true, // Không quăng lỗi nếu status >= 400 để tự handle
     });
@@ -168,7 +170,7 @@ export async function POST(req: NextRequest) {
       (sapResponse.status >= 200 && sapResponse.status < 400) ||
       !!hasSessionCookie;
 
-    return createLoginResponse({
+    const response = createLoginResponse({
       success,
       status: success ? 200 : sapResponse.status,
       message: success
@@ -177,6 +179,16 @@ export async function POST(req: NextRequest) {
       raw: toUtf8String(sapResponse.data),
       setCookie: setCookies,
     });
+
+    if (success) {
+      response.cookies.set("OSWB_SAP_CLIENT", sapClient, {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false,
+      });
+    }
+
+    return response;
   } catch (error: unknown) {
     const axiosError = error as {
       response?: { data?: unknown };
@@ -198,7 +210,7 @@ export async function POST(req: NextRequest) {
         error: {
           raw: rawMsg,
           message:
-            "Đăng nhập thất bại. Kiểm tra `SAP_LOGIN_URL`/`SAP_BASE_URL`, `SAP_CLIENT` và thông tin đăng nhập.",
+            "Đăng nhập thất bại. Kiểm tra `SAP_LOGIN_URL`/`SAP_BASE_URL`, SAP client và thông tin đăng nhập.",
         },
       },
       { status: 500 },
