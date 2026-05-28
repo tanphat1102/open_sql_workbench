@@ -1,6 +1,5 @@
-import { executeWorkbenchQuery } from "./services/workbenchService";
-import { sapClient } from "./services/sapClient";
-
 async function main() {
-  const sapSessionId = "your-session-cookie-here"; // we need a valid cookie... wait, we need to test the frontend API or use the proxy
+  console.log("Run queries through the browser session or /api/sap proxy.");
 }
+
+void main();

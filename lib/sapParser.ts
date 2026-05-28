@@ -24,12 +24,12 @@ export function formatODataResults<T>(
 
       // Tự động nhận diện và sửa lỗi nếu chuỗi RowsJson bị cụt
       if ("RowsJson" in data && typeof data.RowsJson === "string") {
-        let fixedJson = data.RowsJson;
+        const fixedJson = data.RowsJson;
 
         try {
           // Thử parse chuẩn trước
           JSON.parse(fixedJson);
-        } catch (e) {
+        } catch {
           try {
             // Dùng jsonrepair để tự động khôi phục cấu trúc đối tượng JSON bị dở dang
             const repaired = jsonrepair(fixedJson);
