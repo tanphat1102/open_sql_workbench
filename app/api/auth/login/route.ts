@@ -111,6 +111,20 @@ function normalizeSapBaseUrl(value: string) {
   return trimmed;
 }
 
+function buildTargetUrl(sapBaseUrl: string, targetPath: string) {
+  const normalizedBase = normalizeSapBaseUrl(sapBaseUrl);
+  const normalizedPath = targetPath.replace(/^\/+/, "");
+  const servicePrefix = "opu/odata/sap/";
+
+  const finalPath = normalizedBase.toLowerCase().endsWith("/sap/opu/odata/sap")
+    ? normalizedPath.startsWith(servicePrefix)
+      ? normalizedPath.slice(servicePrefix.length)
+      : normalizedPath
+    : normalizedPath;
+
+  return `${normalizedBase}/${finalPath}`;
+}
+
 function normalizeSapClient(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -134,7 +148,10 @@ export async function POST(req: NextRequest) {
     }
 
     const sapBase = normalizeSapBaseUrl(process.env.SAP_BASE_URL || "");
-    const testEndpoint = `${sapBase}/sap/opu/odata/sap/ZSQLWB_ODATA_SRV/$metadata`;
+    const testEndpoint = buildTargetUrl(
+      sapBase,
+      "opu/odata/sap/ZSQLWB_ODATA_SRV/$metadata",
+    );
 
     // Build Basic Auth from the credentials entered by the developer.
     const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -167,8 +184,7 @@ export async function POST(req: NextRequest) {
     );
 
     const success =
-      (sapResponse.status >= 200 && sapResponse.status < 400) ||
-      !!hasSessionCookie;
+      sapResponse.status >= 200 && sapResponse.status < 400 && !!hasSessionCookie;
 
     const response = createLoginResponse({
       success,

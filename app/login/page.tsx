@@ -4,6 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { authService } from "@/services/authService";
 
@@ -15,6 +24,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,6 +38,7 @@ export default function LoginPage() {
       setError(
         loginError instanceof Error ? loginError.message : "Login failed",
       );
+      setErrorDialogOpen(true);
     } finally {
       setLoading(false);
     }
@@ -141,19 +152,10 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {error ? (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-                  >
-                    {error}
-                  </div>
-                ) : (
-                  <div className="fiori-subtle rounded-lg px-4 py-3 text-sm leading-6 text-muted-foreground">
-                    Client is sent as `sap-client` for login and later proxy
-                    requests in this browser session.
-                  </div>
-                )}
+                <div className="fiori-subtle rounded-lg px-4 py-3 text-sm leading-6 text-muted-foreground">
+                  Client is sent as `sap-client` for login and later proxy
+                  requests in this browser session.
+                </div>
 
                 <Button
                   type="submit"
@@ -175,6 +177,29 @@ export default function LoginPage() {
           </div>
         </div>
       </section>
+
+      <Dialog
+        open={errorDialogOpen}
+        onOpenChange={(open) => {
+          setErrorDialogOpen(open);
+
+          if (!open) {
+            setError("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unable to sign in</DialogTitle>
+            <DialogDescription>{error || "Login failed"}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button">OK</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

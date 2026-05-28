@@ -1,9 +1,36 @@
 import type { SapCredentials, SapLoginResponse } from "@/types/sap";
 
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function verifySessionWithRetry() {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const sessionCheck = await fetch("/api/auth/check-session", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+
+    if (sessionCheck.ok) {
+      return true;
+    }
+
+    if (attempt < maxAttempts) {
+      await wait(250);
+    }
+  }
+
+  return false;
+}
+
 export const authService = {
   login: async ({ username, password, client }: SapCredentials) => {
     const response = await fetch("/api/auth/login", {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
       },
@@ -32,15 +59,14 @@ export const authService = {
       throw new Error(data.message || "SAP login failed");
     }
 
-    const sessionCheck = await fetch("/api/auth/check-session", {
-      method: "GET",
-      credentials: "same-origin",
-    });
+    const verified = await verifySessionWithRetry();
 
-    if (sessionCheck.ok) {
-      return data.success ? data : { success: true, message: data.message };
+    if (!verified) {
+      throw new Error(
+        "SAP login succeeded, but the session could not be verified. Please try again.",
+      );
     }
 
-    throw new Error(data.message || "SAP login failed");
+    return data.success ? data : { success: true, message: data.message };
   },
 };
