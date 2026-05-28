@@ -3,6 +3,16 @@
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 
+type MonacoEnvironment = {
+  getWorker?: (workerId: string, label: string) => Worker;
+};
+
+declare global {
+  interface Window {
+    MonacoEnvironment?: MonacoEnvironment;
+  }
+}
+
 type SqlEditorProps = {
   value: string;
   language?: string;
@@ -21,6 +31,17 @@ export function SqlEditor({
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    window.MonacoEnvironment = {
+      getWorker: () =>
+        new Worker(
+          new URL(
+            "monaco-editor/esm/vs/editor/editor.worker.js",
+            import.meta.url,
+          ),
+          { type: "module" },
+        ),
+    };
 
     // Create the editor once on mount. containerRef is stable; avoid
     // including containerRef.current in deps to satisfy react-hooks rules.
