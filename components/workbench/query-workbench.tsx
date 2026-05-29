@@ -6,6 +6,13 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 // Textarea removed in favor of the Monaco-based SqlEditor
 import dynamic from "next/dynamic";
 
@@ -51,6 +58,9 @@ export function QueryWorkbench({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [templateSelectValue, setTemplateSelectValue] = useState<
+    string | undefined
+  >();
 
   async function handleLogin(e?: React.FormEvent) {
     e?.preventDefault();
@@ -126,41 +136,47 @@ export function QueryWorkbench({
             <label className="text-sm text-muted-foreground" htmlFor="entity-set">
               Entity
             </label>
-            <select
-              id="entity-set"
-              value={selectedEntityName}
-              onChange={(event) => onSelectEntity(event.target.value)}
-              className="h-8 min-w-56 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
+            <Select
+              value={selectedEntityName || undefined}
+              onValueChange={onSelectEntity}
+              disabled={entities.length === 0}
             >
-              {entities.map((entity) => (
-                <option key={entity.name} value={entity.name}>
-                  {entity.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="entity-set" className="min-w-56">
+                <SelectValue placeholder="Select entity" />
+              </SelectTrigger>
+              <SelectContent>
+                {entities.map((entity) => (
+                  <SelectItem key={entity.name} value={entity.name}>
+                    {entity.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {templates.length > 0 ? (
-              <select
-                defaultValue=""
-                onChange={(event) => {
+              <Select
+                value={templateSelectValue}
+                onValueChange={(value) => {
+                  setTemplateSelectValue(value);
                   const template = templates.find(
-                    (item) => item.id === event.target.value,
+                    (item) => item.id === value,
                   );
 
                   if (template) {
                     onApplyTemplate(template);
                   }
                 }}
-                className="h-8 min-w-48 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
               >
-                <option value="" disabled>
-                  Load template
-                </option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="min-w-48">
+                  <SelectValue placeholder="Load template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : null}
           </div>
           <div className="flex items-center gap-2 lg:justify-end">

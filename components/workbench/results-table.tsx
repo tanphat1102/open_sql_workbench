@@ -18,6 +18,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -255,18 +262,21 @@ export function ResultsTable({ entityName, rows }: ResultsTableProps) {
           <label className="text-xs" htmlFor="result-page-size">
             Rows per page
           </label>
-          <select
-            id="result-page-size"
-            value={pageSize}
-            onChange={(event) => handlePageSizeChange(event.target.value)}
-            className="h-8 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
+          <Select
+            value={String(pageSize)}
+            onValueChange={handlePageSizeChange}
           >
-            {[10, 25, 50, 100].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="result-page-size" className="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[10, 25, 50, 100].map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="text-xs">
             Page {currentPageIndex + 1} of {pageCount}
           </div>
