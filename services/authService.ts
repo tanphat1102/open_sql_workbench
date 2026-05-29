@@ -1,4 +1,8 @@
-import type { SapCredentials, SapLoginResponse } from "@/types/sap";
+import type {
+  SapCredentials,
+  SapLoginResponse,
+  SapSessionInfo,
+} from "@/types/sap";
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -68,5 +72,32 @@ export const authService = {
     }
 
     return data.success ? data : { success: true, message: data.message };
+  },
+
+  logout: async () => {
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      throw new Error("SAP logout failed");
+    }
+
+    return response.json() as Promise<{ success: boolean }>;
+  },
+
+  getSession: async () => {
+    const response = await fetch("/api/auth/check-session", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return response.json() as Promise<SapSessionInfo>;
   },
 };

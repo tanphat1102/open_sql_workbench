@@ -1,9 +1,12 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
+  ChevronDown,
+  LogOut,
   RefreshCw,
-  TerminalSquare,
+  UserCircle,
 } from "lucide-react";
 
 import { EntityBrowser } from "@/components/workbench/entity-browser";
@@ -13,8 +16,14 @@ import { ActionOutput } from "@/components/workbench/action-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useWorkbench } from "@/hooks/use-workbench";
+import { authService } from "@/services/authService";
+import type { SapSessionInfo } from "@/types/sap";
 
 export function WorkbenchDashboard() {
+  const router = useRouter();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState<SapSessionInfo | null>(null);
   const {
     selectedEntity,
     selectedEntityName,
@@ -31,6 +40,65 @@ export function WorkbenchDashboard() {
     needLogin,
     setNeedLogin,
   } = useWorkbench();
+
+  async function refreshSessionInfo(isMounted = true) {
+    try {
+      const session = await authService.getSession();
+
+      if (isMounted) {
+        setSessionInfo(session);
+      }
+    } catch {
+      if (isMounted) {
+        setSessionInfo(null);
+      }
+    }
+  }
+
+  useEffect(() => {
+    let isMounted = true;
+
+    authService
+      .getSession()
+      .then((session) => {
+        if (isMounted) {
+          setSessionInfo(session);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSessionInfo(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  function handleProfileToggle() {
+    setProfileOpen((current) => {
+      const nextOpen = !current;
+
+      if (nextOpen) {
+        void refreshSessionInfo();
+      }
+
+      return nextOpen;
+    });
+  }
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+
+    try {
+      await authService.logout();
+      router.push("/login");
+    } finally {
+      setIsLoggingOut(false);
+      setProfileOpen(false);
+    }
+  }
 
   return (
     <main className="fiori-page min-h-screen px-3 py-3 text-sm sm:px-4">
@@ -49,17 +117,7 @@ export function WorkbenchDashboard() {
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            <Button
-              asChild
-              variant="outline"
-              className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
-            >
-              <Link href="/login">
-                <TerminalSquare />
-                Re-authenticate
-              </Link>
-            </Button>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <Button
               type="button"
               onClick={runQuery}
@@ -68,6 +126,41 @@ export function WorkbenchDashboard() {
               <RefreshCw />
               Execute
             </Button>
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleProfileToggle}
+                className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+              >
+                <UserCircle />
+                {sessionInfo?.user || "User"}
+                <ChevronDown className="size-4" />
+              </Button>
+              {profileOpen ? (
+                <div className="absolute right-0 z-30 mt-2 w-56 rounded-md border border-border bg-white p-1 shadow-md">
+                  <div className="border-b border-border px-3 py-2">
+                    <div className="text-sm font-medium text-foreground">
+                      {sessionInfo?.user || "SAP user"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {sessionInfo?.client
+                        ? `Client ${sessionInfo.client}`
+                        : "SAP session"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleLogout()}
+                    disabled={isLoggingOut}
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    <LogOut className="size-4 text-primary" />
+                    {isLoggingOut ? "Logging out..." : "Logout"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
 

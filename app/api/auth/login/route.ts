@@ -155,6 +155,10 @@ function normalizeSapClient(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeSapUsername(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function buildCookieHeaderFromSetCookie(setCookie: string[] | undefined) {
   if (!setCookie || setCookie.length === 0) {
     return "";
@@ -192,6 +196,7 @@ export async function POST(req: NextRequest) {
   try {
     const { username, password, client } = await req.json();
     const sapClient = normalizeSapClient(client);
+    const sapUsername = normalizeSapUsername(username);
 
     if (!sapClient || !/^\d{3}$/.test(sapClient)) {
       return NextResponse.json(
@@ -213,7 +218,7 @@ export async function POST(req: NextRequest) {
     );
 
     // Build Basic Auth from the credentials entered by the developer.
-    const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+    const authHeader = `Basic ${Buffer.from(`${sapUsername}:${password}`).toString("base64")}`;
 
     console.log(
       "Attempting SAP login via Basic Auth to:",
@@ -288,6 +293,13 @@ export async function POST(req: NextRequest) {
         path: "/",
         sameSite: "lax",
         httpOnly: false,
+        secure: isSecureRequest(req),
+      });
+      response.cookies.set("OSWB_SAP_USER", sapUsername, {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false,
+        secure: isSecureRequest(req),
       });
     }
 

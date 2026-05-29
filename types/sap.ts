@@ -16,6 +16,12 @@ export type SapLoginResponse = {
       };
 };
 
+export type SapSessionInfo = {
+  success: boolean;
+  user?: string;
+  client?: string;
+};
+
 export type SapQueryParam = string | number | boolean | null | undefined;
 
 export type SapODataEnvelope<T> = {

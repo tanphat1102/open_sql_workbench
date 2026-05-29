@@ -66,6 +66,10 @@ function getSapClient(req: NextRequest) {
   return req.cookies.get("OSWB_SAP_CLIENT")?.value || process.env.SAP_CLIENT;
 }
 
+function getSapUser(req: NextRequest) {
+  return req.cookies.get("OSWB_SAP_USER")?.value;
+}
+
 function toSnippet(data: unknown) {
   if (typeof data === "string") {
     return data.slice(0, 500);
@@ -94,6 +98,7 @@ export async function GET(req: NextRequest) {
     const sapCookies =
       getStoredSapCookieHeader(req) || getSapCookieHeader(cookieHeader);
     const sapClient = getSapClient(req);
+    const sapUser = getSapUser(req);
 
     if (!sapCookies) {
       return NextResponse.json(
@@ -118,7 +123,14 @@ export async function GET(req: NextRequest) {
     );
 
     if (response.status >= 200 && response.status < 400) {
-      return NextResponse.json({ success: true }, { status: 200 });
+      return NextResponse.json(
+        {
+          success: true,
+          client: sapClient,
+          user: sapUser,
+        },
+        { status: 200 },
+      );
     }
 
     return NextResponse.json(
