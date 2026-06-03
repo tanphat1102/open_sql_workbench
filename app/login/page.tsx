@@ -4,16 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/lib/toast";
 import { authService } from "@/services/authService";
 
 export default function LoginPage() {
@@ -23,22 +15,26 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
-    setError("");
 
     try {
       await authService.login({ username, password, client });
+      toast({
+        title: "Signed in to SAP",
+        description: `Client ${client.trim()} is ready for queries.`,
+        variant: "success",
+      });
       router.push("/workbench");
     } catch (loginError) {
-      setError(
-        loginError instanceof Error ? loginError.message : "Login failed",
-      );
-      setErrorDialogOpen(true);
+      toast({
+        title: "Unable to sign in",
+        description:
+          loginError instanceof Error ? loginError.message : "Login failed",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -178,28 +174,6 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <Dialog
-        open={errorDialogOpen}
-        onOpenChange={(open) => {
-          setErrorDialogOpen(open);
-
-          if (!open) {
-            setError("");
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Unable to sign in</DialogTitle>
-            <DialogDescription>{error || "Login failed"}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button">OK</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

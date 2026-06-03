@@ -16,6 +16,7 @@ import { ActionOutput } from "@/components/workbench/action-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useWorkbench } from "@/hooks/use-workbench";
+import { toast } from "@/lib/toast";
 import { authService } from "@/services/authService";
 import type { SapSessionInfo } from "@/types/sap";
 
@@ -38,7 +39,6 @@ export function WorkbenchDashboard() {
     applyTemplate,
     runQuery,
     needLogin,
-    setNeedLogin,
   } = useWorkbench();
 
   async function refreshSessionInfo(isMounted = true) {
@@ -75,6 +75,19 @@ export function WorkbenchDashboard() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!needLogin) {
+      return;
+    }
+
+    toast({
+      title: "SAP session required",
+      description: "Sign in again before running SAP queries.",
+      variant: "destructive",
+    });
+    router.push("/login");
+  }, [needLogin, router]);
 
   function handleProfileToggle() {
     setProfileOpen((current) => {
@@ -184,8 +197,6 @@ export function WorkbenchDashboard() {
               onSelectEntity={handleEntityChange}
               onApplyTemplate={applyTemplate}
               onRunQuery={runQuery}
-              needLogin={needLogin}
-              setNeedLogin={setNeedLogin}
             />
 
             <ResultsTable
