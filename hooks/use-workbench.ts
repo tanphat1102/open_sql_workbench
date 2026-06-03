@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { validateOpenSql } from "@/lib/openSqlValidation";
 import { workbenchService } from "@/services/workbenchService";
 import type { WorkbenchTemplate } from "@/types/workbench";
 
@@ -192,6 +193,24 @@ export function useWorkbench() {
   }
 
   function runQuery() {
+    const syntaxErrors = validateOpenSql(queryText, {
+      availableEntityNames: entities.map((entity) => entity.name),
+    });
+
+    if (syntaxErrors.length > 0) {
+      setActivityEntries((currentEntries) => [
+        {
+          id: `activity-${Date.now()}`,
+          title: "Query syntax error",
+          detail: syntaxErrors[0].message,
+          timestampRaw: "/Date(1716496400000)/",
+          tone: "warning",
+        },
+        ...currentEntries,
+      ]);
+      return;
+    }
+
     setIsRunning(true);
 
     void (async () => {

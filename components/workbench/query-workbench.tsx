@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import dynamic from "next/dynamic";
+import { Wand2 } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-// Textarea removed in favor of the Monaco-based SqlEditor
-import dynamic from "next/dynamic";
+import { formatOpenSql } from "@/lib/openSqlFormatter";
+import { toast } from "@/lib/toast";
+import type { SqlValidationError } from "@/lib/openSqlValidation";
+import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
 
 const SqlEditor = dynamic(
   () => import("./sql-editor").then((m) => m.SqlEditor),
@@ -22,10 +28,6 @@ const SqlEditor = dynamic(
     ssr: false,
   },
 );
-import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
-import { Input } from "@/components/ui/input";
-import { useState } from "react";
-import { authService } from "@/services/authService";
 
 type QueryWorkbenchProps = {
   selectedEntityName: string;
@@ -37,8 +39,6 @@ type QueryWorkbenchProps = {
   onSelectEntity: (entityName: string) => void;
   onApplyTemplate: (template: WorkbenchTemplate) => void;
   onRunQuery: () => void;
-  needLogin?: boolean;
-  setNeedLogin?: (v: boolean) => void;
 };
 
 export function QueryWorkbench({
@@ -51,83 +51,47 @@ export function QueryWorkbench({
   onSelectEntity,
   onApplyTemplate,
   onRunQuery,
-  needLogin,
-  setNeedLogin,
 }: QueryWorkbenchProps) {
-  const [client, setClient] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [templateSelectValue, setTemplateSelectValue] = useState<
     string | undefined
   >();
+  const [syntaxErrors, setSyntaxErrors] = useState<SqlValidationError[]>([]);
 
-  async function handleLogin(e?: React.FormEvent) {
-    e?.preventDefault();
-    setIsLoggingIn(true);
-    try {
-      await authService.login({ username, password, client });
-
-      if (needLogin) {
-        // Close modal and retry query
-        setNeedLogin?.(false);
-        onRunQuery();
-      }
-    } catch (err) {
-      console.error("Login failed", err);
-      // keep modal open for retry
-    } finally {
-      setIsLoggingIn(false);
+  function handleRunQuery() {
+    if (syntaxErrors.length > 0) {
+      toast({
+        title: "SQL syntax needs attention",
+        description: syntaxErrors[0].message,
+        variant: "destructive",
+      });
+      return;
     }
+
+    onRunQuery();
+  }
+
+  function handleFormatQuery() {
+    const formattedQuery = formatOpenSql(queryText);
+
+    if (!formattedQuery) {
+      toast({
+        title: "Nothing to format",
+        description: "Enter a SQL statement before formatting.",
+      });
+      return;
+    }
+
+    onQueryTextChange(formattedQuery);
+    toast({
+      title: "Query formatted",
+      description: "OpenSQL statement was formatted.",
+      variant: "success",
+    });
   }
 
   return (
     <Card className="fiori-surface gap-0 py-0">
       <CardContent className="space-y-0 p-0">
-        {needLogin ? (
-          <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-            <form
-              onSubmit={handleLogin}
-              className="flex flex-col gap-2 lg:flex-row lg:items-center"
-            >
-              <div className="text-sm font-medium">SAP session required</div>
-              <div className="flex flex-1 flex-wrap gap-2">
-                <Input
-                  placeholder="Client"
-                  value={client}
-                  onChange={(e) => setClient(e.target.value)}
-                  inputMode="numeric"
-                  maxLength={3}
-                  required
-                />
-                <Input
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-                <Input
-                  placeholder="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <Button type="submit" className="bg-amber-600 text-white">
-                  {isLoggingIn ? "Signing..." : "Sign in"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setNeedLogin?.(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </div>
-        ) : null}
-
         <div className="flex flex-col gap-2 border-b border-border bg-[#f7fbff] px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
@@ -184,8 +148,18 @@ export function QueryWorkbench({
               {queryText.length} chars
             </div>
             <Button
-              onClick={onRunQuery}
+              type="button"
+              variant="outline"
+              onClick={handleFormatQuery}
               disabled={isRunning}
+              className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+            >
+              <Wand2 />
+              Format
+            </Button>
+            <Button
+              onClick={handleRunQuery}
+              disabled={isRunning || syntaxErrors.length > 0}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isRunning ? "Executing..." : "Execute"}
@@ -199,6 +173,9 @@ export function QueryWorkbench({
           <SqlEditor
             value={queryText}
             onChange={(v: string) => onQueryTextChange(v)}
+            onValidationChange={setSyntaxErrors}
+            entities={entities}
+            selectedEntityName={selectedEntityName}
             height="340px"
           />
         </div>
