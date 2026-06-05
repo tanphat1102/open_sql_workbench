@@ -7,6 +7,7 @@ export type SqlValidationError = {
 
 export type OpenSqlValidationOptions = {
   availableEntityNames?: string[];
+  validateEntityNames?: boolean;
 };
 
 const clausePatterns = [
@@ -83,7 +84,9 @@ export function validateOpenSql(
 ): SqlValidationError[] {
   const query = queryText.trim();
   const errors: SqlValidationError[] = [];
-  const availableEntityNames = options.availableEntityNames ?? [];
+  const availableEntityNames = options.validateEntityNames === false
+    ? []
+    : (options.availableEntityNames ?? []);
 
   if (!query) {
     errors.push({
