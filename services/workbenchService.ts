@@ -1,5 +1,7 @@
 import type {
   WorkbenchActivity,
+  WorkbenchColumn,
+  WorkbenchDebugResponse,
   WorkbenchEntity,
   WorkbenchMetric,
   WorkbenchRow,
@@ -7,7 +9,13 @@ import type {
   WorkbenchTemplate,
 } from "@/types/workbench";
 import { sapClient } from "@/services/sapClient";
-import type { SapRunQueryResult } from "@/types/sap";
+import type {
+  SapODataEnvelope,
+  SapRunQueryEnvelope,
+  SapRunQueryResult,
+  SapSqlwbColumn,
+  SapSqlwbPageChunk,
+} from "@/types/sap";
 
 const servicePath = "opu/odata/sap/ZSQLWB_ODATA_SRV";
 const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
@@ -230,7 +238,9 @@ type SnapshotLoadResult = {
 
 type WorkbenchQueryExecution = {
   entitySetName: string;
+  columns: WorkbenchColumn[];
   rows: WorkbenchRow[];
+  debugResponses: WorkbenchDebugResponse[];
   queryPath: string;
   isCountQuery: boolean;
 };
@@ -268,6 +278,56 @@ function buildRunQueryPath(queryText: string, page = 1) {
   return `${servicePath}/RunQuery?${searchParams.toString()}`;
 }
 
+function escapeODataStringLiteral(value: string) {
+  return value.replace(/'/g, "''");
+}
+
+function buildFilteredSetPath(
+  entitySetName: string,
+  filter: string,
+  extraParams: Record<string, string | number | undefined> = {},
+) {
+  const searchParams = new URLSearchParams({
+    $format: "json",
+    $filter: filter,
+  });
+
+  Object.entries(extraParams).forEach(([key, value]) => {
+    if (value !== undefined) {
+      searchParams.set(key, String(value));
+    }
+  });
+
+  return `${servicePath}/${entitySetName}?${searchParams.toString()}`;
+}
+
+function buildColumnSetPath(resultId: string) {
+  return buildFilteredSetPath(
+    "SqlwbColumnSet",
+    `ResultId eq '${escapeODataStringLiteral(resultId)}'`,
+    {
+      $select:
+        "ResultId,Position,FieldName,JsonKey,Element,AbapType,Length,Decimals,IsKey,Label",
+    },
+  );
+}
+
+function buildPageChunkSetPath(
+  resultId: string,
+  page: number,
+  options: { top: number; skip: number },
+) {
+  return buildFilteredSetPath(
+    "SqlwbPageChunkSet",
+    `ResultId eq '${escapeODataStringLiteral(resultId)}' and PageNo eq '${String(page)}'`,
+    {
+      $select: "ResultId,PageNo,ChunkNo,PayloadPart,PayloadLen,IsLastChunk",
+      $top: options.top,
+      $skip: options.skip,
+    },
+  );
+}
+
 function extractQueryEntityName(queryText: string, fallbackEntity: string) {
   const fromMatch = /\bFROM\s+([A-Z0-9_./-]+)/i.exec(queryText);
 
@@ -290,7 +350,6 @@ function createEntityNameResolver(
 
     return (
       canonicalNames.get(trimmedName.toLowerCase()) ??
-      availableEntityNames[0] ??
       entityName
     );
   };
@@ -363,22 +422,250 @@ function stripMetadataFields(row: Record<string, unknown>): WorkbenchRow {
   return Object.fromEntries(normalizedEntries) as WorkbenchRow;
 }
 
-function parseRunQueryRows(rowsJson: string | null | undefined) {
-  if (!rowsJson) {
-    return [] as Record<string, unknown>[];
+function normalizeNumber(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
   }
+
+  if (typeof value === "string") {
+    return ["X", "TRUE", "1", "YES"].includes(value.toUpperCase());
+  }
+
+  return false;
+}
+
+function getODataResults<T>(payload: SapODataEnvelope<T>) {
+  return payload.d?.results ?? [];
+}
+
+function createDebugResponse({
+  label,
+  summary,
+  response,
+}: {
+  label: string;
+  summary: string;
+  response: {
+    path: string;
+    text: string;
+    status: number;
+    contentLength: string;
+    upstreamContentLength: string;
+    upstreamContentType: string;
+    proxyBytes: string;
+    receivedChars: number;
+    receivedBytes: number;
+  };
+}): WorkbenchDebugResponse {
+  return {
+    label,
+    path: response.path,
+    status: response.status,
+    contentLength: response.contentLength,
+    upstreamContentLength: response.upstreamContentLength,
+    upstreamContentType: response.upstreamContentType,
+    proxyBytes: response.proxyBytes,
+    receivedChars: response.receivedChars,
+    receivedBytes: response.receivedBytes,
+    summary,
+    body: response.text,
+  };
+}
+
+function buildFallbackColumns(rows: WorkbenchRow[]): WorkbenchColumn[] {
+  return Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).map(
+    (key, index) => ({
+      key,
+      fieldName: key,
+      label: key,
+      position: index + 1,
+    }),
+  );
+}
+
+function normalizeColumns(columns: SapSqlwbColumn[], rows: WorkbenchRow[]) {
+  if (columns.length === 0) {
+    return buildFallbackColumns(rows);
+  }
+
+  return columns
+    .flatMap((column, index) => {
+      const key = column.JsonKey?.trim() || column.FieldName?.trim() || "";
+
+      if (!key) {
+        return [];
+      }
+
+      const fieldName = column.FieldName?.trim() || key;
+
+      return [
+        {
+          key,
+          fieldName,
+          label: column.Label?.trim() || fieldName,
+          position: normalizeNumber(column.Position, index + 1),
+          abapType: column.AbapType?.trim() || undefined,
+          length:
+            column.Length === undefined
+              ? undefined
+              : normalizeNumber(column.Length),
+          decimals:
+            column.Decimals === undefined
+              ? undefined
+              : normalizeNumber(column.Decimals),
+          isKey: normalizeBoolean(column.IsKey),
+        } satisfies WorkbenchColumn,
+      ];
+    })
+    .sort((a, b) => a.position - b.position);
+}
+
+function unwrapRunQueryResult(payload: SapRunQueryEnvelope) {
+  const data = payload.d;
+
+  if (!data) {
+    return {};
+  }
+
+  if ("RunQuery" in data && data.RunQuery) {
+    return data.RunQuery;
+  }
+
+  return data as SapRunQueryResult;
+}
+
+function parseRowsJson(rowsJson: string): WorkbenchRow[] {
+  if (!rowsJson.trim()) {
+    return [];
+  }
+
+  let parsed: unknown;
 
   try {
-    const parsed = JSON.parse(rowsJson);
-
-    if (Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>[];
-    }
-  } catch {
-    // If the backend returns malformed JSON, fall back to an empty result set.
+    parsed = JSON.parse(rowsJson) as unknown;
+  } catch (error) {
+    throw new Error(
+      [
+        "Joined PayloadPart did not parse as JSON.",
+        `RowsJson chars: ${rowsJson.length}`,
+        `RowsJson bytes: ${new TextEncoder().encode(rowsJson).length}`,
+        `Tail: ${rowsJson.slice(-240)}`,
+        error instanceof Error ? `Error: ${error.message}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
   }
 
-  return [] as Record<string, unknown>[];
+  if (!Array.isArray(parsed)) {
+    throw new Error("SAP page chunks did not produce a JSON array");
+  }
+
+  return parsed
+    .filter((row): row is Record<string, unknown> => {
+      return row !== null && typeof row === "object" && !Array.isArray(row);
+    })
+    .map((row) => stripMetadataFields(row));
+}
+
+async function loadResultColumns(resultId: string) {
+  const response = await sapClient.requestRawJson<
+    SapODataEnvelope<SapSqlwbColumn>
+  >(buildColumnSetPath(resultId));
+  const columns = getODataResults(response.data);
+
+  return {
+    columns,
+    debugResponse: createDebugResponse({
+      label: "SqlwbColumnSet",
+      summary: `Column rows: ${columns.length}`,
+      response,
+    }),
+  };
+}
+
+function hasLastChunk(chunks: SapSqlwbPageChunk[]) {
+  return chunks.some((chunk) => normalizeBoolean(chunk.IsLastChunk));
+}
+
+async function loadPageChunkBatch(
+  resultId: string,
+  page: number,
+  options: { top: number; skip: number },
+) {
+  const response = await sapClient.requestRawJson<
+    SapODataEnvelope<SapSqlwbPageChunk>
+  >(
+    buildPageChunkSetPath(resultId, page, options),
+  );
+  const chunks = getODataResults(response.data);
+
+  return {
+    chunks,
+    debugResponse: createDebugResponse({
+      label: `SqlwbPageChunkSet skip ${options.skip}`,
+      summary: `Chunk rows: ${chunks.length}. Last chunk in batch: ${
+        hasLastChunk(chunks) ? "yes" : "no"
+      }`,
+      response,
+    }),
+  };
+}
+
+async function loadResultRows(resultId: string, page: number) {
+  const chunkBatchSize = 100;
+  const maxChunkBatches = 1000;
+  const chunks: SapSqlwbPageChunk[] = [];
+  const debugResponses: WorkbenchDebugResponse[] = [];
+
+  for (let batchIndex = 0; batchIndex < maxChunkBatches; batchIndex += 1) {
+    const { chunks: batch, debugResponse } = await loadPageChunkBatch(resultId, page, {
+      top: chunkBatchSize,
+      skip: batchIndex * chunkBatchSize,
+    });
+    debugResponses.push(debugResponse);
+
+    if (batch.length === 0) {
+      break;
+    }
+
+    chunks.push(...batch);
+
+    if (hasLastChunk(batch) || batch.length < chunkBatchSize) {
+      break;
+    }
+  }
+
+  console.log("SAP page chunks loaded", {
+    resultId,
+    page,
+    chunkCount: chunks.length,
+    hasLastChunk: hasLastChunk(chunks),
+  });
+
+  if (chunks.length === 0) {
+    return {
+      rows: [] as WorkbenchRow[],
+      debugResponses,
+    };
+  }
+
+  const rowsJson = chunks
+    .slice()
+    .sort((a, b) => normalizeNumber(a.ChunkNo) - normalizeNumber(b.ChunkNo))
+    .map((chunk) => chunk.PayloadPart ?? "")
+    .join("");
+
+  return {
+    rows: parseRowsJson(rowsJson),
+    debugResponses,
+  };
 }
 
 async function executeLiveRunQuery(
@@ -393,9 +680,9 @@ async function executeLiveRunQuery(
   );
   const queryPath = buildRunQueryPath(queryText);
 
-  const result = await sapClient.fetchEntity<SapRunQueryResult>(queryPath, {
-    method: "POST",
-  });
+  const result = unwrapRunQueryResult(
+    await sapClient.request<SapRunQueryEnvelope>(queryPath, { method: "POST" }),
+  );
 
   const status = (result.Status ?? "").toString().toUpperCase();
   if (status && status !== "SUCCESS") {
@@ -411,31 +698,66 @@ async function executeLiveRunQuery(
     );
   }
 
-  console.log("sap response result:", JSON.stringify(result).substring(0, 300));
-  const rows = parseRunQueryRows(result.RowsJson).map((row) =>
-    stripMetadataFields(row),
+  const resultId = result.ResultId?.trim();
+
+  if (!resultId) {
+    throw Object.assign(new Error("RunQuery did not return ResultId"), {
+      status: 400,
+      sapStatus: result.Status,
+      sapErrorCode: result.ErrorCode || "MISSING_RESULT_ID",
+    });
+  }
+
+  const page = Math.max(1, normalizeNumber(result.Page, 1));
+  const totalPages = normalizeNumber(result.TotalPages, 1);
+
+  if (totalPages > 0 && page > totalPages) {
+    throw Object.assign(
+      new Error(`Requested page ${page} is greater than total pages ${totalPages}`),
+      {
+        status: 400,
+        sapStatus: result.Status,
+        sapErrorCode: "PAGE_OUT_OF_RANGE",
+      },
+    );
+  }
+
+  const {
+    columns: sapColumns,
+    debugResponse: columnDebugResponse,
+  } = await loadResultColumns(resultId);
+  const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
+    resultId,
+    page,
   );
+  const debugResponses = [columnDebugResponse, ...chunkDebugResponses];
+  const columns = normalizeColumns(sapColumns, rows);
 
   if (queryPlan.isCountQuery) {
     const countValue =
       Number(result.RowCount ?? result.TotalRows ?? rows.length) || 0;
+    const countRows = [
+      {
+        RecordCount: countValue,
+        EntitySet: queryPlan.entitySetName,
+      },
+    ];
 
     return {
       entitySetName: queryPlan.entitySetName,
-      rows: [
-        {
-          RecordCount: countValue,
-          EntitySet: queryPlan.entitySetName,
-        },
-      ],
+      columns: buildFallbackColumns(countRows),
+      rows: countRows,
+      debugResponses,
       queryPath,
       isCountQuery: true,
     };
   }
 
   return {
-    entitySetName: queryPlan.entitySetName,
+    entitySetName: result.ObjectName || queryPlan.entitySetName,
+    columns,
     rows,
+    debugResponses,
     queryPath,
     isCountQuery: false,
   };
@@ -497,15 +819,18 @@ export async function executeWorkbenchQuery(
 
   if (queryPlan.isCountQuery) {
     const rows = await loadEntityRows(queryPlan.entitySetName);
+    const countRows = [
+      {
+        RecordCount: rows.length,
+        EntitySet: queryPlan.entitySetName,
+      },
+    ];
 
     return {
       entitySetName: queryPlan.entitySetName,
-      rows: [
-        {
-          RecordCount: rows.length,
-          EntitySet: queryPlan.entitySetName,
-        },
-      ],
+      columns: buildFallbackColumns(countRows),
+      rows: countRows,
+      debugResponses: [],
       queryPath: buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
       isCountQuery: true,
     };
@@ -514,10 +839,13 @@ export async function executeWorkbenchQuery(
   const rows = await sapClient.fetchCollection<Record<string, unknown>>(
     buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
   );
+  const normalizedRows = rows.map((row) => stripMetadataFields(row));
 
   return {
     entitySetName: queryPlan.entitySetName,
-    rows: rows.map((row) => stripMetadataFields(row)),
+    columns: buildFallbackColumns(normalizedRows),
+    rows: normalizedRows,
+    debugResponses: [],
     queryPath: buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
     isCountQuery: false,
   };
@@ -626,36 +954,6 @@ export const workbenchService = {
     fallbackEntity: string,
     availableEntityNames: string[],
   ) => {
-    try {
-      return await executeLiveRunQuery(
-        queryText,
-        fallbackEntity,
-        availableEntityNames,
-      );
-    } catch (error: unknown) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        ("status" in error || "sapStatus" in error)
-      ) {
-        const typedError = error as {
-          status?: number;
-          sapStatus?: string;
-        };
-
-        if (
-          (typedError.status !== undefined && typedError.status >= 400) ||
-          typedError.sapStatus
-        ) {
-          throw error;
-        }
-      }
-
-      return executeWorkbenchQuery(
-        queryText,
-        fallbackEntity,
-        availableEntityNames,
-      );
-    }
+    return executeLiveRunQuery(queryText, fallbackEntity, availableEntityNames);
   },
 };

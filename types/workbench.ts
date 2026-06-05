@@ -14,6 +14,17 @@ export type WorkbenchEntity = {
   lastSyncedRaw: string;
 };
 
+export type WorkbenchColumn = {
+  key: string;
+  fieldName: string;
+  label: string;
+  position: number;
+  abapType?: string;
+  length?: number;
+  decimals?: number;
+  isKey?: boolean;
+};
+
 export type WorkbenchMetric = {
   label: string;
   value: string;
@@ -28,6 +39,20 @@ export type WorkbenchActivity = {
   detail: string;
   timestampRaw: string;
   tone: "success" | "info" | "warning";
+};
+
+export type WorkbenchDebugResponse = {
+  label: string;
+  path: string;
+  status: number;
+  contentLength: string;
+  upstreamContentLength: string;
+  upstreamContentType: string;
+  proxyBytes: string;
+  receivedChars: number;
+  receivedBytes: number;
+  summary: string;
+  body: string;
 };
 
 export type WorkbenchSnapshot = {

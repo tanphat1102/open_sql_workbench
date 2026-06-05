@@ -4,13 +4,29 @@ import { useEffect, useMemo, useState } from "react";
 
 import { validateOpenSql } from "@/lib/openSqlValidation";
 import { workbenchService } from "@/services/workbenchService";
-import type { WorkbenchTemplate } from "@/types/workbench";
+import type {
+  WorkbenchColumn,
+  WorkbenchDebugResponse,
+  WorkbenchRow,
+  WorkbenchTemplate,
+} from "@/types/workbench";
 
 const snapshot = workbenchService.getSnapshot();
 const defaultEntity = snapshot.entities[0]?.name ?? "";
 
 function buildTemplateQuery(template: WorkbenchTemplate, entityName: string) {
   return template.query.replace("<entity>", entityName);
+}
+
+function buildFallbackColumns(rows: WorkbenchRow[]): WorkbenchColumn[] {
+  return Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).map(
+    (key, index) => ({
+      key,
+      fieldName: key,
+      label: key,
+      position: index + 1,
+    }),
+  );
 }
 
 function getErrorStatus(error: unknown) {
@@ -38,6 +54,12 @@ export function useWorkbench() {
   const [resultRows, setResultRows] = useState(
     snapshot.rowsByEntity[defaultEntity] ?? [],
   );
+  const [resultColumns, setResultColumns] = useState(
+    buildFallbackColumns(snapshot.rowsByEntity[defaultEntity] ?? []),
+  );
+  const [resultDebugResponses, setResultDebugResponses] = useState<
+    WorkbenchDebugResponse[]
+  >([]);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
@@ -80,7 +102,10 @@ export function useWorkbench() {
               setQueryText(buildTemplateQuery(nextTemplate, nextName));
             }
 
-            setResultRows(liveSnapshot.rowsByEntity[nextName] ?? []);
+            const nextRows = liveSnapshot.rowsByEntity[nextName] ?? [];
+            setResultRows(nextRows);
+            setResultColumns(buildFallbackColumns(nextRows));
+            setResultDebugResponses([]);
 
             return nextName;
           });
@@ -184,7 +209,10 @@ export function useWorkbench() {
       setQueryText(buildTemplateQuery(nextTemplate, entityName));
     }
 
-    setResultRows(rowsByEntity[entityName] ?? []);
+    const nextRows = rowsByEntity[entityName] ?? [];
+    setResultRows(nextRows);
+    setResultColumns(buildFallbackColumns(nextRows));
+    setResultDebugResponses([]);
   }
 
   function applyTemplate(template: WorkbenchTemplate) {
@@ -195,6 +223,7 @@ export function useWorkbench() {
   function runQuery() {
     const syntaxErrors = validateOpenSql(queryText, {
       availableEntityNames: entities.map((entity) => entity.name),
+      validateEntityNames: false,
     });
 
     if (syntaxErrors.length > 0) {
@@ -222,6 +251,8 @@ export function useWorkbench() {
         );
 
         setResultRows(execution.rows);
+        setResultColumns(execution.columns);
+        setResultDebugResponses(execution.debugResponses);
         setSelectedEntityName(execution.entitySetName);
 
         setActivityEntries((currentEntries) => [
@@ -241,6 +272,7 @@ export function useWorkbench() {
         if (getErrorStatus(error) === 401) {
           setNeedLogin(true);
         }
+        setResultDebugResponses([]);
         setActivityEntries((currentEntries) => [
           {
             id: `activity-${Date.now()}`,
@@ -274,6 +306,8 @@ export function useWorkbench() {
     needLogin,
     setNeedLogin,
     activityEntries,
+    resultColumns,
+    resultDebugResponses,
     resultRows,
     handleEntityChange,
     applyTemplate,

@@ -102,6 +102,24 @@ function appendSapCookie(response: NextResponse, cookieStr: string) {
   );
 }
 
+function isForwardableHeader(key: string) {
+  return ![
+    "transfer-encoding",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "upgrade",
+    "set-cookie",
+    // The proxy may receive a decompressed body from fetch/undici. Reusing
+    // upstream length/encoding headers can make browser diagnostics misleading.
+    "content-length",
+    "content-encoding",
+  ].includes(key);
+}
+
 async function handleProxy(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -137,13 +155,13 @@ async function handleProxy(
 
     // 2. For write requests, fetch a fresh CSRF token with the user's SAP cookies.
     if (["POST", "PUT", "DELETE"].includes(method)) {
-      // Use the service metadata endpoint as the stable token source.
-      const metadataPath = targetPath.includes("ZSQLWB_ODATA_SRV")
-        ? "opu/odata/sap/ZSQLWB_ODATA_SRV/$metadata"
+      // Use the service root as the token source for the SQL Workbench service.
+      const csrfPath = targetPath.includes("ZSQLWB_ODATA_SRV")
+        ? "opu/odata/sap/ZSQLWB_ODATA_SRV/"
         : targetPath;
 
       const csrfRes = await axios.get(
-        buildTargetUrl(sapBaseUrl, metadataPath, ""),
+        buildTargetUrl(sapBaseUrl, csrfPath, ""),
         {
           headers: {
             Cookie: sapCookies,
@@ -172,46 +190,53 @@ async function handleProxy(
       extraHeaders["Content-Type"] = req.headers.get("content-type") || "";
     }
 
-    // 4. Forward the request to SAP with the developer's session cookies.
-    // Use arraybuffer so we can forward raw bytes (JSON, XML, etc.) unchanged
-    const sapResponse = await axios({
-      method,
-      url: fullTargetUrl,
-      data: body && body.length > 0 ? body : undefined,
-      headers: extraHeaders,
-      params: sapClient ? { "sap-client": sapClient } : undefined,
-      responseType: "arraybuffer",
-      validateStatus: () => true,
-    });
-
-    // Build headers to forward back to client. Copy content-type and other relevant headers.
-    const forwardedHeaders: Record<string, string> = {};
-    if (sapResponse.headers) {
-      Object.entries(sapResponse.headers).forEach(([k, v]) => {
-        if (!v) return;
-        // Skip hop-by-hop headers that shouldn't be forwarded
-        const key = k.toLowerCase();
-        if (
-          [
-            "transfer-encoding",
-            "connection",
-            "keep-alive",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailer",
-            "upgrade",
-          ].includes(key)
-        )
-          return;
-        // For set-cookie we handle separately
-        if (key === "set-cookie") return;
-        forwardedHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v);
-      });
+    const upstreamUrl = new URL(fullTargetUrl);
+    if (sapClient && !upstreamUrl.searchParams.has("sap-client")) {
+      upstreamUrl.searchParams.set("sap-client", sapClient);
     }
 
-    const bodyBuffer = Buffer.from(sapResponse.data || "");
-    const bodyUint8 = new Uint8Array(bodyBuffer);
+    // 4. Forward the request to SAP and return the raw response bytes.
+    // Do not parse, map, slice, stringify, or otherwise reshape OData payloads here.
+    const sapResponse = await fetch(upstreamUrl.toString(), {
+      method,
+      body: body && body.length > 0 ? body : undefined,
+      headers: extraHeaders,
+      cache: "no-store",
+    });
+    const upstreamArrayBuffer = await sapResponse.arrayBuffer();
+    const bodyUint8 = new Uint8Array(upstreamArrayBuffer);
+    const upstreamContentLength =
+      sapResponse.headers.get("content-length") || "";
+    const upstreamContentType = sapResponse.headers.get("content-type") || "";
+
+    console.log("SAP proxy raw response", {
+      method,
+      targetPath,
+      status: sapResponse.status,
+      upstreamContentLength,
+      upstreamContentType,
+      proxyBytes: bodyUint8.byteLength,
+      tail:
+        upstreamContentType.includes("json") || upstreamContentType.includes("xml")
+          ? Buffer.from(bodyUint8).toString("utf8").slice(-240)
+          : undefined,
+    });
+
+    const forwardedHeaders: Record<string, string> = {};
+    sapResponse.headers.forEach((value, key) => {
+      const lowerKey = key.toLowerCase();
+      if (!value || !isForwardableHeader(lowerKey)) {
+        return;
+      }
+      forwardedHeaders[key] = value;
+    });
+    if (!forwardedHeaders["content-type"] && upstreamContentType) {
+      forwardedHeaders["content-type"] = upstreamContentType;
+    }
+    forwardedHeaders["x-oswb-upstream-content-length"] =
+      upstreamContentLength || "";
+    forwardedHeaders["x-oswb-upstream-content-type"] = upstreamContentType;
+    forwardedHeaders["x-oswb-proxy-bytes"] = String(bodyUint8.byteLength);
 
     const response = new NextResponse(bodyUint8, {
       status: sapResponse.status,
@@ -219,7 +244,10 @@ async function handleProxy(
     });
 
     // If SAP set cookies, forward them individually
-    const sapNewCookies = (sapResponse.headers["set-cookie"] as string[]) || [];
+    const sapNewCookies =
+      typeof sapResponse.headers.getSetCookie === "function"
+        ? sapResponse.headers.getSetCookie()
+        : [];
     sapNewCookies.forEach((cookieStr: string) => {
       appendSapCookie(response, cookieStr);
     });

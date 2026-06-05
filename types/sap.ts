@@ -30,6 +30,10 @@ export type SapODataEnvelope<T> = {
   };
 };
 
+export type SapRunQueryEnvelope = {
+  d?: SapRunQueryResult | { RunQuery?: SapRunQueryResult };
+};
+
 export type SapRunQueryResult = {
   ResultId?: string;
   Status?: string;
@@ -46,4 +50,26 @@ export type SapRunQueryResult = {
   Csv?: string | null;
   ErrorCode?: string | null;
   ErrorText?: string | null;
+};
+
+export type SapSqlwbColumn = {
+  ResultId?: string;
+  Position?: number | string;
+  FieldName?: string;
+  JsonKey?: string;
+  Element?: string;
+  AbapType?: string;
+  Length?: number | string;
+  Decimals?: number | string;
+  IsKey?: boolean | string;
+  Label?: string;
+};
+
+export type SapSqlwbPageChunk = {
+  ResultId?: string;
+  PageNo?: string;
+  ChunkNo?: number | string;
+  PayloadPart?: string;
+  PayloadLen?: number | string;
+  IsLastChunk?: boolean | string;
 };

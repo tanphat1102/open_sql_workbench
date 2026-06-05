@@ -24,6 +24,19 @@ type SapClientError = Error & {
   body: unknown;
 };
 
+type SapRawJsonResult<T> = {
+  data: T;
+  text: string;
+  path: string;
+  status: number;
+  contentLength: string;
+  upstreamContentLength: string;
+  upstreamContentType: string;
+  proxyBytes: string;
+  receivedChars: number;
+  receivedBytes: number;
+};
+
 function getNestedValue(source: unknown, path: string[]) {
   return path.reduce<unknown>((current, key) => {
     if (current && typeof current === "object" && key in current) {
@@ -170,6 +183,80 @@ export const sapClient = {
     }
 
     return text;
+  },
+
+  requestRawJson: async <T>(path: string, init?: RequestInit) => {
+    const response = await fetch(buildSapUrl(path), {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+    const text = await response.text();
+    const contentLength = response.headers.get("content-length") ?? "";
+    const upstreamContentLength =
+      response.headers.get("x-oswb-upstream-content-length") ?? "";
+    const upstreamContentType =
+      response.headers.get("x-oswb-upstream-content-type") ?? "";
+    const proxyBytes = response.headers.get("x-oswb-proxy-bytes") ?? "";
+    const receivedBytes = new TextEncoder().encode(text).length;
+
+    console.log("SAP raw JSON response", {
+      path,
+      status: response.status,
+      contentLength,
+      upstreamContentLength,
+      upstreamContentType,
+      proxyBytes,
+      receivedChars: text.length,
+      receivedBytes,
+    });
+
+    let data: unknown;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (error) {
+      throw createSapClientError(
+        [
+          "SAP JSON parse failed after reading raw response text.",
+          `Status: ${response.status}`,
+          `Content-Length: ${contentLength || "-"}`,
+          `Upstream Content-Length: ${upstreamContentLength || "-"}`,
+          `Proxy bytes: ${proxyBytes || "-"}`,
+          `Received chars: ${text.length}`,
+          `Received bytes: ${receivedBytes}`,
+          error instanceof Error ? `Error: ${error.message}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        response.status,
+        text,
+      );
+    }
+
+    if (!response.ok) {
+      throw createSapClientError(
+        extractSapErrorMessage(data, response.status) || "SAP service request failed",
+        response.status,
+        data,
+      );
+    }
+
+    return {
+      data: data as T,
+      text,
+      path,
+      status: response.status,
+      contentLength,
+      upstreamContentLength,
+      upstreamContentType,
+      proxyBytes,
+      receivedChars: text.length,
+      receivedBytes,
+    } satisfies SapRawJsonResult<T>;
   },
 
   fetchCollection: async <T>(path: string, init?: RequestInit) => {

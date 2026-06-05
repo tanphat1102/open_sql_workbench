@@ -34,6 +34,8 @@ export function WorkbenchDashboard() {
     setQueryText,
     isRunning,
     activityEntries,
+    resultColumns,
+    resultDebugResponses,
     resultRows,
     handleEntityChange,
     applyTemplate,
@@ -201,6 +203,8 @@ export function WorkbenchDashboard() {
 
             <ResultsTable
               entityName={selectedEntity?.name ?? selectedEntityName}
+              columns={resultColumns}
+              debugResponses={resultDebugResponses}
               rows={resultRows}
             />
             <ActionOutput activity={activityEntries} />
