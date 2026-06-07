@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import {
   ChevronsLeft,
   ChevronsRight,
@@ -26,14 +31,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { parseSapDate } from "@/lib/sapParser";
 import type {
   WorkbenchColumn,
@@ -46,6 +49,12 @@ type ResultsTableProps = {
   columns: WorkbenchColumn[];
   debugResponses: WorkbenchDebugResponse[];
   rows: WorkbenchRow[];
+};
+
+type HeaderDragState = {
+  pointerId: number;
+  startX: number;
+  scrollLeft: number;
 };
 
 function formatCellValue(value: WorkbenchRow[string]) {
@@ -127,6 +136,9 @@ export function ResultsTable({
   const [selectedDebugIndex, setSelectedDebugIndex] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  const [isHeaderDragging, setIsHeaderDragging] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const headerDragRef = useRef<HeaderDragState | null>(null);
   const visibleColumns = useMemo(
     () => (columns.length > 0 ? columns : buildFallbackColumns(rows)),
     [columns, rows],
@@ -153,6 +165,7 @@ export function ResultsTable({
   const pageRows = visibleRows.slice(pageStart, pageEnd);
   const canGoPrevious = currentPageIndex > 0;
   const canGoNext = currentPageIndex < pageCount - 1;
+  const tableMinWidth = Math.max(visibleColumns.length * 168, 720);
 
   function handleSearchChange(value: string) {
     setSearchText(value);
@@ -162,6 +175,61 @@ export function ResultsTable({
   function handlePageSizeChange(value: string) {
     setPageSize(Number(value));
     setPageIndex(0);
+  }
+
+  function handleHeaderPointerDown(
+    event: PointerEvent<HTMLTableSectionElement>,
+  ) {
+    const scrollContainer = tableScrollRef.current;
+
+    if (
+      event.button !== 0 ||
+      !scrollContainer ||
+      scrollContainer.scrollWidth <= scrollContainer.clientWidth
+    ) {
+      return;
+    }
+
+    headerDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      scrollLeft: scrollContainer.scrollLeft,
+    };
+    setIsHeaderDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleHeaderPointerMove(
+    event: PointerEvent<HTMLTableSectionElement>,
+  ) {
+    const scrollContainer = tableScrollRef.current;
+    const dragState = headerDragRef.current;
+
+    if (!scrollContainer || !dragState) {
+      return;
+    }
+
+    scrollContainer.scrollLeft =
+      dragState.scrollLeft - (event.clientX - dragState.startX);
+    event.preventDefault();
+  }
+
+  function handleHeaderPointerEnd(
+    event: PointerEvent<HTMLTableSectionElement>,
+  ) {
+    const dragState = headerDragRef.current;
+
+    if (!dragState) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(dragState.pointerId)) {
+      event.currentTarget.releasePointerCapture(dragState.pointerId);
+    }
+
+    headerDragRef.current = null;
+    setIsHeaderDragging(false);
   }
 
   async function handleDownload({ format }: { format: "xlsx" | "csv" }) {
@@ -262,14 +330,30 @@ export function ResultsTable({
               : "No rows match the current search."}
           </div>
         ) : (
-          <ScrollArea className="h-full bg-white">
-            <Table>
-              <TableHeader>
+          <div
+            ref={tableScrollRef}
+            className="h-full min-w-0 overflow-auto bg-white"
+          >
+            <table
+              className="w-full table-fixed caption-bottom text-sm"
+              style={{ minWidth: `${tableMinWidth}px` }}
+            >
+              <TableHeader
+                className={
+                  isHeaderDragging
+                    ? "cursor-grabbing select-none"
+                    : "cursor-grab select-none"
+                }
+                onPointerDown={handleHeaderPointerDown}
+                onPointerMove={handleHeaderPointerMove}
+                onPointerUp={handleHeaderPointerEnd}
+                onPointerCancel={handleHeaderPointerEnd}
+              >
                 <TableRow className="border-border hover:bg-transparent">
                   {visibleColumns.map((column) => (
                     <TableHead
                       key={column.key}
-                      className="sticky top-0 border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
+                      className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
                       title={[
                         column.fieldName,
                         column.abapType,
@@ -300,7 +384,8 @@ export function ResultsTable({
                     {visibleColumns.map((column) => (
                       <TableCell
                         key={column.key}
-                        className="px-3 py-2 text-foreground"
+                        className="w-[168px] truncate px-3 py-2 text-foreground"
+                        title={formatCellValue(row[column.key])}
                       >
                         {formatCellValue(row[column.key])}
                       </TableCell>
@@ -308,8 +393,8 @@ export function ResultsTable({
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
-          </ScrollArea>
+            </table>
+          </div>
         )}
       </CardContent>
       <div className="flex flex-col gap-2 border-t border-border px-3 py-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
