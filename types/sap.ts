@@ -73,3 +73,24 @@ export type SapSqlwbPageChunk = {
   PayloadLen?: number | string;
   IsLastChunk?: boolean | string;
 };
+
+export type SapSqlwbTable = {
+  ProfileId?: string;
+  ObjectName?: string;
+  ObjectType?: string;
+  Description?: string;
+};
+
+export type SapSqlwbField = {
+  ProfileId?: string;
+  ObjectName?: string;
+  Position?: number | string;
+  FieldName?: string;
+  JsonKey?: string;
+  Element?: string;
+  AbapType?: string;
+  Length?: number | string;
+  Decimals?: number | string;
+  IsKey?: boolean | string;
+  Label?: string;
+};

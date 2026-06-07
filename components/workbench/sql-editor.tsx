@@ -6,6 +6,8 @@ import {
   validateOpenSql,
   type SqlValidationError,
 } from "@/lib/openSqlValidation";
+import { sqlAssistService } from "@/services/sqlAssistService";
+import type { SapSqlwbField, SapSqlwbTable } from "@/types/sap";
 import type { WorkbenchEntity } from "@/types/workbench";
 
 type MonacoEnvironment = {
@@ -31,6 +33,28 @@ type SqlEditorProps = {
 type EditorContext = {
   entities: WorkbenchEntity[];
   selectedEntityName: string;
+};
+
+type TableSuggestionCache = {
+  fromStartOffset: number;
+  firstChar: string;
+  tables: SapSqlwbTable[];
+};
+
+type CompletionAssistState = {
+  tableCache: TableSuggestionCache | null;
+  fieldCache: Map<string, SapSqlwbField[]>;
+};
+
+type DynamicCompletionResult = {
+  suggestions: monaco.languages.CompletionItem[];
+  exclusive: boolean;
+};
+
+type SemanticValidationError = {
+  message: string;
+  startIndex: number;
+  length: number;
 };
 
 const sqlKeywords = [
@@ -158,6 +182,7 @@ function buildCompletionItems(
   model: monaco.editor.ITextModel,
   position: monaco.Position,
   context: EditorContext,
+  dynamicSuggestions: monaco.languages.CompletionItem[] = [],
 ): monaco.languages.CompletionItem[] {
   const word = model.getWordUntilPosition(position);
   const range = {
@@ -172,20 +197,6 @@ function buildCompletionItems(
   const selectedEntityName =
     context.selectedEntityName || context.entities[0]?.name || "EntitySet";
   const firstKeyField = selectedEntity?.keyFields[0] ?? "Field";
-  const entitySuggestions = context.entities.map((entity) => ({
-    label: entity.name,
-    kind: monaco.languages.CompletionItemKind.Class,
-    insertText: entity.name,
-    detail: entity.description,
-    range,
-  }));
-  const fieldSuggestions = (selectedEntity?.keyFields ?? []).map((field) => ({
-    label: field,
-    kind: monaco.languages.CompletionItemKind.Field,
-    insertText: field,
-    detail: `${selectedEntity?.name ?? "Entity"} key field`,
-    range,
-  }));
   const keywordSuggestions = sqlKeywords.map((keyword) => ({
     label: keyword,
     kind: monaco.languages.CompletionItemKind.Keyword,
@@ -352,13 +363,455 @@ function buildCompletionItems(
   ];
 
   return [
+    ...dynamicSuggestions,
     ...snippetSuggestions,
     ...keywordSuggestions,
     ...functionSuggestions,
-    ...entitySuggestions,
-    ...fieldSuggestions,
     ...operatorSuggestions,
   ];
+}
+
+function getWordRange(model: monaco.editor.ITextModel, position: monaco.Position) {
+  const word = model.getWordUntilPosition(position);
+
+  return {
+    startLineNumber: position.lineNumber,
+    endLineNumber: position.lineNumber,
+    startColumn: word.startColumn,
+    endColumn: word.endColumn,
+  };
+}
+
+function getTableCompletionContext(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+) {
+  const offset = model.getOffsetAt(position);
+  const beforeCursor = model.getValue().slice(0, offset);
+  const match = /\bFROM\s+([A-Z0-9_./-]*)$/i.exec(beforeCursor);
+
+  if (!match) {
+    return null;
+  }
+
+  const token = match[1] ?? "";
+
+  return {
+    token,
+    firstChar: token[0]?.toUpperCase() ?? "",
+    fromStartOffset: offset - token.length,
+    range: getWordRange(model, position),
+  };
+}
+
+function getPrimaryTableName(query: string) {
+  return /\bFROM\s+([A-Z0-9_./-]+)/i.exec(query)?.[1]?.toUpperCase() ?? "";
+}
+
+function getKnownEntityNames(context: EditorContext, assistState: CompletionAssistState) {
+  const names = new Set<string>();
+
+  context.entities.forEach((entity) => {
+    if (entity.name) {
+      names.add(entity.name);
+    }
+  });
+
+  assistState.tableCache?.tables.forEach((table) => {
+    if (table.ObjectName) {
+      names.add(table.ObjectName);
+    }
+  });
+
+  assistState.fieldCache.forEach((fields, tableName) => {
+    if (fields.length > 0) {
+      names.add(tableName);
+    }
+  });
+
+  return [...names];
+}
+
+function isKnownTableName(
+  tableName: string,
+  context: EditorContext,
+  assistState: CompletionAssistState,
+) {
+  const normalizedTableName = tableName.toLowerCase();
+
+  if (
+    context.entities.some(
+      (entity) => entity.name.toLowerCase() === normalizedTableName,
+    )
+  ) {
+    return true;
+  }
+
+  return Boolean(
+    assistState.tableCache?.tables.some(
+      (table) => table.ObjectName?.toLowerCase() === normalizedTableName,
+    ),
+  );
+}
+
+function getFieldCompletionContext(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+) {
+  const query = model.getValue();
+  const offset = model.getOffsetAt(position);
+  const fromMatch = /\bFROM\s+([A-Z0-9_./-]+)/i.exec(query);
+
+  if (!fromMatch?.[1]) {
+    return false;
+  }
+
+  const beforeCursor = query.slice(0, offset);
+
+  if (offset < fromMatch.index) {
+    return {
+      range: getWordRange(model, position),
+    };
+  }
+
+  const fieldContextMatch =
+    /\b(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|ON|AND|OR|BY)\s+([A-Z0-9_./~]*)$/i.exec(
+      beforeCursor,
+    );
+
+  if (!fieldContextMatch) {
+    return null;
+  }
+
+  const token = fieldContextMatch[1] ?? "";
+  const wordRange = getWordRange(model, position);
+
+  return {
+    range: token
+      ? wordRange
+      : {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endColumn: position.column,
+        },
+  };
+}
+
+function tableCompletionItems(
+  tables: SapSqlwbTable[],
+  token: string,
+  range: monaco.IRange,
+): monaco.languages.CompletionItem[] {
+  const normalizedToken = token.toLowerCase();
+
+  return tables
+    .filter((table) => {
+      const objectName = table.ObjectName ?? "";
+      return objectName.toLowerCase().startsWith(normalizedToken);
+    })
+    .map((table) => ({
+      label: table.ObjectName ?? "",
+      kind: monaco.languages.CompletionItemKind.Class,
+      insertText: table.ObjectName ?? "",
+      detail: [table.ObjectType, table.Description].filter(Boolean).join(" | "),
+      range,
+    }));
+}
+
+function fieldCompletionItems(
+  fields: SapSqlwbField[],
+  range: monaco.IRange,
+): monaco.languages.CompletionItem[] {
+  return fields
+    .filter((field) => field.FieldName)
+    .sort((a, b) => Number(a.Position ?? 0) - Number(b.Position ?? 0))
+    .map((field) => ({
+      label: field.FieldName ?? "",
+      kind: monaco.languages.CompletionItemKind.Field,
+      insertText: field.FieldName ?? "",
+      detail: [field.AbapType, field.Element, field.Label]
+        .filter(Boolean)
+        .join(" | "),
+      range,
+    }));
+}
+
+function stripTableQualifier(fieldName: string) {
+  return fieldName.split(/[.~]/).pop()?.toUpperCase() ?? fieldName.toUpperCase();
+}
+
+function addFieldError(
+  errors: SemanticValidationError[],
+  fieldName: string,
+  startIndex: number,
+  validFieldNames: Set<string>,
+  tableName: string,
+) {
+  const normalizedField = stripTableQualifier(fieldName);
+
+  if (validFieldNames.has(normalizedField)) {
+    return;
+  }
+
+  errors.push({
+    message: `Unknown field "${fieldName}" for table ${tableName}.`,
+    startIndex,
+    length: fieldName.length,
+  });
+}
+
+function addDelimitedFieldErrors({
+  errors,
+  clause,
+  clauseStartIndex,
+  validFieldNames,
+  tableName,
+}: {
+  errors: SemanticValidationError[];
+  clause: string;
+  clauseStartIndex: number;
+  validFieldNames: Set<string>;
+  tableName: string;
+}) {
+  clause.split(",").reduce((offset, part) => {
+    const trimmedPart = part.trim();
+    const leadingWhitespace = part.length - part.trimStart().length;
+    const fieldMatch = /^([A-Z_][A-Z0-9_./~]*)/i.exec(trimmedPart);
+
+    if (fieldMatch?.[1] && fieldMatch[1] !== "*") {
+      addFieldError(
+        errors,
+        fieldMatch[1],
+        clauseStartIndex + offset + leadingWhitespace,
+        validFieldNames,
+        tableName,
+      );
+    }
+
+    return offset + part.length + 1;
+  }, 0);
+}
+
+function getClauseSlice(query: string, clausePattern: RegExp, stopPattern: RegExp) {
+  const clauseMatch = clausePattern.exec(query);
+
+  if (!clauseMatch) {
+    return null;
+  }
+
+  const startIndex = clauseMatch.index + clauseMatch[0].length;
+  const remaining = query.slice(startIndex);
+  const stopMatch = stopPattern.exec(remaining);
+  const endIndex = stopMatch ? startIndex + stopMatch.index : query.length;
+
+  return {
+    text: query.slice(startIndex, endIndex),
+    startIndex,
+  };
+}
+
+function getFieldValidationErrors(
+  query: string,
+  assistState: CompletionAssistState,
+) {
+  const tableName = getPrimaryTableName(query);
+  const fields = tableName ? assistState.fieldCache.get(tableName) : undefined;
+
+  if (!tableName || !fields || fields.length === 0) {
+    return [] as SemanticValidationError[];
+  }
+
+  const validFieldNames = new Set(
+    fields
+      .map((field) => field.FieldName?.toUpperCase())
+      .filter((fieldName): fieldName is string => Boolean(fieldName)),
+  );
+  const errors: SemanticValidationError[] = [];
+  const fromMatch = /\bFROM\b/i.exec(query);
+
+  if (fromMatch) {
+    const projectionStart = "SELECT".length;
+    const projection = query.slice(projectionStart, fromMatch.index).trim();
+    const projectionLeadingWhitespace =
+      query.slice(projectionStart, fromMatch.index).length -
+      query.slice(projectionStart, fromMatch.index).trimStart().length;
+
+    if (
+      projection &&
+      projection !== "*" &&
+      !/\bCOUNT\s*\(\s*\*\s*\)/i.test(projection)
+    ) {
+      const normalizedProjection = projection.replace(/^\bTOP\s+\d+\s+/i, "");
+      const topOffset = projection.length - normalizedProjection.length;
+      addDelimitedFieldErrors({
+        errors,
+        clause: normalizedProjection,
+        clauseStartIndex:
+          projectionStart + projectionLeadingWhitespace + topOffset,
+        validFieldNames,
+        tableName,
+      });
+    }
+  }
+
+  const orderByClause = getClauseSlice(
+    query,
+    /\bORDER\s+BY\b/i,
+    /\b(UP\s+TO|LIMIT)\b/i,
+  );
+  if (orderByClause) {
+    addDelimitedFieldErrors({
+      errors,
+      clause: orderByClause.text,
+      clauseStartIndex: orderByClause.startIndex,
+      validFieldNames,
+      tableName,
+    });
+  }
+
+  const groupByClause = getClauseSlice(
+    query,
+    /\bGROUP\s+BY\b/i,
+    /\b(HAVING|ORDER\s+BY|UP\s+TO|LIMIT)\b/i,
+  );
+  if (groupByClause) {
+    addDelimitedFieldErrors({
+      errors,
+      clause: groupByClause.text,
+      clauseStartIndex: groupByClause.startIndex,
+      validFieldNames,
+      tableName,
+    });
+  }
+
+  const conditionalClauses = [
+    getClauseSlice(query, /\bWHERE\b/i, /\b(GROUP\s+BY|HAVING|ORDER\s+BY|UP\s+TO|LIMIT)\b/i),
+    getClauseSlice(query, /\bHAVING\b/i, /\b(ORDER\s+BY|UP\s+TO|LIMIT)\b/i),
+    getClauseSlice(query, /\bON\b/i, /\b(WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|UP\s+TO|LIMIT)\b/i),
+  ].filter((clause): clause is { text: string; startIndex: number } =>
+    Boolean(clause),
+  );
+
+  conditionalClauses.forEach((clause) => {
+    for (const match of clause.text.matchAll(
+      /\b([A-Z_][A-Z0-9_./~]*)\s*(?:=|<>|!=|>=|<=|>|<|LIKE|IN|BETWEEN|IS)\b/gi,
+    )) {
+      if (match.index !== undefined && match[1]) {
+        addFieldError(
+          errors,
+          match[1],
+          clause.startIndex + match.index,
+          validFieldNames,
+          tableName,
+        );
+      }
+    }
+  });
+
+  return errors;
+}
+
+async function ensureFieldsForCurrentTable(
+  model: monaco.editor.ITextModel,
+  assistState: CompletionAssistState,
+  context: EditorContext,
+) {
+  const tableName = getPrimaryTableName(model.getValue());
+
+  if (!tableName || assistState.fieldCache.has(tableName)) {
+    return;
+  }
+
+  if (!isKnownTableName(tableName, context, assistState)) {
+    return;
+  }
+
+  assistState.fieldCache.set(tableName, await sqlAssistService.getFields(tableName));
+}
+
+async function buildDynamicCompletionItems(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+  assistState: CompletionAssistState,
+  context: EditorContext,
+): Promise<DynamicCompletionResult> {
+  const tableContext = getTableCompletionContext(model, position);
+
+  if (tableContext) {
+    const token = tableContext.token;
+
+    if (!token) {
+      assistState.tableCache = null;
+      return {
+        suggestions: [],
+        exclusive: true,
+      };
+    }
+
+    if (
+      !assistState.tableCache ||
+      assistState.tableCache.fromStartOffset !== tableContext.fromStartOffset ||
+      assistState.tableCache.firstChar !== tableContext.firstChar
+    ) {
+      const tables = await sqlAssistService.searchTables(
+        `${tableContext.firstChar}*`,
+        50,
+      );
+
+      assistState.tableCache = {
+        fromStartOffset: tableContext.fromStartOffset,
+        firstChar: tableContext.firstChar,
+        tables,
+      };
+    }
+
+    return {
+      suggestions: tableCompletionItems(
+        assistState.tableCache.tables,
+        token,
+        tableContext.range,
+      ),
+      exclusive: true,
+    };
+  }
+
+  const tableName = getPrimaryTableName(model.getValue());
+
+  if (!tableName) {
+    return {
+      suggestions: [],
+      exclusive: false,
+    };
+  }
+
+  const fieldContext = getFieldCompletionContext(model, position);
+
+  if (!fieldContext) {
+    return {
+      suggestions: [],
+      exclusive: false,
+    };
+  }
+
+  if (!isKnownTableName(tableName, context, assistState)) {
+    return {
+      suggestions: [],
+      exclusive: true,
+    };
+  }
+
+  if (!assistState.fieldCache.has(tableName)) {
+    assistState.fieldCache.set(tableName, await sqlAssistService.getFields(tableName));
+  }
+
+  return {
+    suggestions: fieldCompletionItems(
+      assistState.fieldCache.get(tableName) ?? [],
+      fieldContext.range,
+    ),
+    exclusive: true,
+  };
 }
 
 export function SqlEditor({
@@ -374,11 +827,16 @@ export function SqlEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const completionProviderRef =
     useRef<monaco.IDisposable | null>(null);
+  const assistStateRef = useRef<CompletionAssistState>({
+    tableCache: null,
+    fieldCache: new Map(),
+  });
   const contextRef = useRef<EditorContext>({
     entities,
     selectedEntityName,
   });
   const onValidationChangeRef = useRef(onValidationChange);
+  const dynamicValidationSeqRef = useRef(0);
 
   useEffect(() => {
     contextRef.current = {
@@ -410,21 +868,42 @@ export function SqlEditor({
     completionProviderRef.current =
       monaco.languages.registerCompletionItemProvider(language, {
         triggerCharacters: [" ", ".", "_", "'"],
-        provideCompletionItems: (model, position) => ({
-          suggestions: buildCompletionItems(
+        provideCompletionItems: async (model, position) => {
+          const dynamicResult = await buildDynamicCompletionItems(
             model,
             position,
+            assistStateRef.current,
             contextRef.current,
-          ),
-        }),
+          );
+
+          if (dynamicResult.exclusive) {
+            return {
+              suggestions: dynamicResult.suggestions,
+            };
+          }
+
+          return {
+            suggestions: buildCompletionItems(
+              model,
+              position,
+              contextRef.current,
+              dynamicResult.suggestions,
+            ),
+          };
+        },
       });
 
     function updateMarkers(model: monaco.editor.ITextModel) {
       const validationErrors = validateOpenSql(model.getValue(), {
-        availableEntityNames: contextRef.current.entities.map(
-          (entity) => entity.name,
+        availableEntityNames: getKnownEntityNames(
+          contextRef.current,
+          assistStateRef.current,
         ),
       });
+      const fieldValidationErrors = getFieldValidationErrors(
+        model.getValue(),
+        assistStateRef.current,
+      );
       const markers = validationErrors.map((error) => ({
         ...markerRangeForIndex(
           model,
@@ -436,10 +915,48 @@ export function SqlEditor({
         ),
         severity: monaco.MarkerSeverity.Error,
         message: error.message,
-      }));
+      })).concat(
+        fieldValidationErrors.map((error) => ({
+          ...markerRangeForIndex(model, error.startIndex, error.length),
+          severity: monaco.MarkerSeverity.Error,
+          message: error.message,
+        })),
+      );
 
       monaco.editor.setModelMarkers(model, "open-sql-workbench", markers);
-      onValidationChangeRef.current?.(validationErrors);
+      onValidationChangeRef.current?.([
+        ...validationErrors,
+        ...fieldValidationErrors.map((error) => {
+          const start = model.getPositionAt(error.startIndex);
+          const end = model.getPositionAt(error.startIndex + error.length);
+
+          return {
+            message: error.message,
+            startColumn: start.column,
+            endColumn: end.column,
+            lineNumber: start.lineNumber,
+          };
+        }),
+      ]);
+    }
+
+    async function updateDynamicMarkers(model: monaco.editor.ITextModel) {
+      const sequence = dynamicValidationSeqRef.current + 1;
+      dynamicValidationSeqRef.current = sequence;
+
+      try {
+        await ensureFieldsForCurrentTable(
+          model,
+          assistStateRef.current,
+          contextRef.current,
+        );
+      } catch {
+        // Field suggestions are best-effort; backend RunQuery remains authoritative.
+      }
+
+      if (dynamicValidationSeqRef.current === sequence && !model.isDisposed()) {
+        updateMarkers(model);
+      }
     }
 
     // Create the editor once on mount. containerRef is stable; avoid
@@ -472,11 +989,13 @@ export function SqlEditor({
       const activeModel = editorRef.current?.getModel();
       if (activeModel) {
         updateMarkers(activeModel);
+        void updateDynamicMarkers(activeModel);
       }
     });
 
     if (model) {
       updateMarkers(model);
+      void updateDynamicMarkers(model);
     }
 
     return () => {
@@ -499,26 +1018,74 @@ export function SqlEditor({
       editorRef.current.setValue(value ?? "");
       const model = editorRef.current.getModel();
       if (model) {
-        const validationErrors = validateOpenSql(model.getValue(), {
-          availableEntityNames: contextRef.current.entities.map(
-            (entity) => entity.name,
-          ),
-        });
-        const markers = validationErrors.map((error) => ({
-          ...markerRangeForIndex(
-            model,
-            model.getOffsetAt({
-              lineNumber: error.lineNumber ?? 1,
-              column: error.startColumn,
-            }),
-            error.endColumn - error.startColumn,
-          ),
-          severity: monaco.MarkerSeverity.Error,
-          message: error.message,
-        }));
+        const applyMarkers = () => {
+          const validationErrors = validateOpenSql(model.getValue(), {
+            availableEntityNames: getKnownEntityNames(
+              contextRef.current,
+              assistStateRef.current,
+            ),
+          });
+          const fieldValidationErrors = getFieldValidationErrors(
+            model.getValue(),
+            assistStateRef.current,
+          );
+          const markers = validationErrors.map((error) => ({
+            ...markerRangeForIndex(
+              model,
+              model.getOffsetAt({
+                lineNumber: error.lineNumber ?? 1,
+                column: error.startColumn,
+              }),
+              error.endColumn - error.startColumn,
+            ),
+            severity: monaco.MarkerSeverity.Error,
+            message: error.message,
+          })).concat(
+            fieldValidationErrors.map((error) => ({
+              ...markerRangeForIndex(model, error.startIndex, error.length),
+              severity: monaco.MarkerSeverity.Error,
+              message: error.message,
+            })),
+          );
 
-        monaco.editor.setModelMarkers(model, "open-sql-workbench", markers);
-        onValidationChangeRef.current?.(validationErrors);
+          monaco.editor.setModelMarkers(model, "open-sql-workbench", markers);
+          onValidationChangeRef.current?.([
+            ...validationErrors,
+            ...fieldValidationErrors.map((error) => {
+              const start = model.getPositionAt(error.startIndex);
+              const end = model.getPositionAt(error.startIndex + error.length);
+
+              return {
+                message: error.message,
+                startColumn: start.column,
+                endColumn: end.column,
+                lineNumber: start.lineNumber,
+              };
+            }),
+          ]);
+        };
+
+        applyMarkers();
+
+        const sequence = dynamicValidationSeqRef.current + 1;
+        dynamicValidationSeqRef.current = sequence;
+
+        void ensureFieldsForCurrentTable(
+          model,
+          assistStateRef.current,
+          contextRef.current,
+        )
+          .catch(() => {
+            // Field validation is best-effort; RunQuery still returns SAP truth.
+          })
+          .then(() => {
+            if (
+              dynamicValidationSeqRef.current === sequence &&
+              !model.isDisposed()
+            ) {
+              applyMarkers();
+            }
+          });
       }
     }
   }, [value]);
