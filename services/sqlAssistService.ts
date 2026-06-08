@@ -24,6 +24,16 @@ function buildFunctionPath(
 }
 
 export const sqlAssistService = {
+  fetchAllTables: async (maxRows = 10000) => {
+    return sapClient.fetchCollection<SapSqlwbTable>(
+      buildFunctionPath("SearchTables", {
+        ProfileId: quoteODataString(queryProfileId),
+        SearchText: quoteODataString(""),
+        MaxRows: maxRows,
+      }),
+    );
+  },
+
   searchTables: async (searchText: string, maxRows = 50) => {
     return sapClient.fetchCollection<SapSqlwbTable>(
       buildFunctionPath("SearchTables", {

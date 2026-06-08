@@ -34,6 +34,10 @@ export type SapRunQueryEnvelope = {
   d?: SapRunQueryResult | { RunQuery?: SapRunQueryResult };
 };
 
+export type SapPreviewTableEnvelope = {
+  d?: SapRunQueryResult | { PreviewTable?: SapRunQueryResult };
+};
+
 export type SapRunQueryResult = {
   ResultId?: string;
   Status?: string;

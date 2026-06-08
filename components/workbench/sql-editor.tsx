@@ -7,7 +7,7 @@ import {
   type SqlValidationError,
 } from "@/lib/openSqlValidation";
 import { sqlAssistService } from "@/services/sqlAssistService";
-import type { SapSqlwbField, SapSqlwbTable } from "@/types/sap";
+import type { SapSqlwbField } from "@/types/sap";
 import type { WorkbenchEntity } from "@/types/workbench";
 
 type MonacoEnvironment = {
@@ -35,14 +35,7 @@ type EditorContext = {
   selectedEntityName: string;
 };
 
-type TableSuggestionCache = {
-  fromStartOffset: number;
-  firstChar: string;
-  tables: SapSqlwbTable[];
-};
-
 type CompletionAssistState = {
-  tableCache: TableSuggestionCache | null;
   fieldCache: Map<string, SapSqlwbField[]>;
 };
 
@@ -120,6 +113,9 @@ const sqlOperators = [
 ];
 
 let isSqlLanguageConfigured = false;
+const defaultEditorFontSize = 13;
+const minEditorFontSize = 10;
+const maxEditorFontSize = 28;
 
 function configureSqlLanguage() {
   if (isSqlLanguageConfigured) {
@@ -398,8 +394,6 @@ function getTableCompletionContext(
 
   return {
     token,
-    firstChar: token[0]?.toUpperCase() ?? "",
-    fromStartOffset: offset - token.length,
     range: getWordRange(model, position),
   };
 }
@@ -417,12 +411,6 @@ function getKnownEntityNames(context: EditorContext, assistState: CompletionAssi
     }
   });
 
-  assistState.tableCache?.tables.forEach((table) => {
-    if (table.ObjectName) {
-      names.add(table.ObjectName);
-    }
-  });
-
   assistState.fieldCache.forEach((fields, tableName) => {
     if (fields.length > 0) {
       names.add(tableName);
@@ -435,7 +423,6 @@ function getKnownEntityNames(context: EditorContext, assistState: CompletionAssi
 function isKnownTableName(
   tableName: string,
   context: EditorContext,
-  assistState: CompletionAssistState,
 ) {
   const normalizedTableName = tableName.toLowerCase();
 
@@ -446,12 +433,7 @@ function isKnownTableName(
   ) {
     return true;
   }
-
-  return Boolean(
-    assistState.tableCache?.tables.some(
-      (table) => table.ObjectName?.toLowerCase() === normalizedTableName,
-    ),
-  );
+  return false;
 }
 
 function getFieldCompletionContext(
@@ -499,22 +481,21 @@ function getFieldCompletionContext(
 }
 
 function tableCompletionItems(
-  tables: SapSqlwbTable[],
+  entities: WorkbenchEntity[],
   token: string,
   range: monaco.IRange,
 ): monaco.languages.CompletionItem[] {
   const normalizedToken = token.toLowerCase();
 
-  return tables
-    .filter((table) => {
-      const objectName = table.ObjectName ?? "";
-      return objectName.toLowerCase().startsWith(normalizedToken);
+  return entities
+    .filter((entity) => {
+      return entity.name.toLowerCase().startsWith(normalizedToken);
     })
-    .map((table) => ({
-      label: table.ObjectName ?? "",
+    .map((entity) => ({
+      label: entity.name,
       kind: monaco.languages.CompletionItemKind.Class,
-      insertText: table.ObjectName ?? "",
-      detail: [table.ObjectType, table.Description].filter(Boolean).join(" | "),
+      insertText: entity.name,
+      detail: entity.description,
       range,
     }));
 }
@@ -723,7 +704,7 @@ async function ensureFieldsForCurrentTable(
     return;
   }
 
-  if (!isKnownTableName(tableName, context, assistState)) {
+  if (!isKnownTableName(tableName, context)) {
     return;
   }
 
@@ -742,33 +723,15 @@ async function buildDynamicCompletionItems(
     const token = tableContext.token;
 
     if (!token) {
-      assistState.tableCache = null;
       return {
         suggestions: [],
         exclusive: true,
       };
     }
 
-    if (
-      !assistState.tableCache ||
-      assistState.tableCache.fromStartOffset !== tableContext.fromStartOffset ||
-      assistState.tableCache.firstChar !== tableContext.firstChar
-    ) {
-      const tables = await sqlAssistService.searchTables(
-        `${tableContext.firstChar}*`,
-        50,
-      );
-
-      assistState.tableCache = {
-        fromStartOffset: tableContext.fromStartOffset,
-        firstChar: tableContext.firstChar,
-        tables,
-      };
-    }
-
     return {
       suggestions: tableCompletionItems(
-        assistState.tableCache.tables,
+        context.entities,
         token,
         tableContext.range,
       ),
@@ -794,7 +757,7 @@ async function buildDynamicCompletionItems(
     };
   }
 
-  if (!isKnownTableName(tableName, context, assistState)) {
+  if (!isKnownTableName(tableName, context)) {
     return {
       suggestions: [],
       exclusive: true,
@@ -828,7 +791,6 @@ export function SqlEditor({
   const completionProviderRef =
     useRef<monaco.IDisposable | null>(null);
   const assistStateRef = useRef<CompletionAssistState>({
-    tableCache: null,
     fieldCache: new Map(),
   });
   const contextRef = useRef<EditorContext>({
@@ -837,6 +799,7 @@ export function SqlEditor({
   });
   const onValidationChangeRef = useRef(onValidationChange);
   const dynamicValidationSeqRef = useRef(0);
+  const editorFontSizeRef = useRef(defaultEditorFontSize);
 
   useEffect(() => {
     contextRef.current = {
@@ -968,7 +931,8 @@ export function SqlEditor({
       automaticLayout: true,
       minimap: { enabled: false },
       lineNumbers: "on",
-      fontSize: 13,
+      fontSize: editorFontSizeRef.current,
+      lineHeight: Math.round(editorFontSizeRef.current * 1.5),
       suggestOnTriggerCharacters: true,
       quickSuggestions: {
         comments: false,
@@ -981,6 +945,40 @@ export function SqlEditor({
     });
 
     const model = editorRef.current.getModel();
+    const editorDomNode = editorRef.current.getDomNode();
+
+    function handleEditorWheel(event: WheelEvent) {
+      if (!event.shiftKey) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const nextFontSize = Math.min(
+        maxEditorFontSize,
+        Math.max(
+          minEditorFontSize,
+          editorFontSizeRef.current + direction,
+        ),
+      );
+
+      if (nextFontSize === editorFontSizeRef.current) {
+        return;
+      }
+
+      editorFontSizeRef.current = nextFontSize;
+      editorRef.current?.updateOptions({
+        fontSize: nextFontSize,
+        lineHeight: Math.round(nextFontSize * 1.5),
+      });
+      editorRef.current?.layout();
+    }
+
+    editorDomNode?.addEventListener("wheel", handleEditorWheel, {
+      passive: false,
+    });
 
     const disposable = editorRef.current.onDidChangeModelContent(() => {
       const val = editorRef.current?.getValue() ?? "";
@@ -999,6 +997,7 @@ export function SqlEditor({
     }
 
     return () => {
+      editorDomNode?.removeEventListener("wheel", handleEditorWheel);
       disposable.dispose();
       completionProviderRef.current?.dispose();
       if (editorRef.current) {

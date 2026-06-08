@@ -9,12 +9,15 @@ import type {
   WorkbenchTemplate,
 } from "@/types/workbench";
 import { sapClient } from "@/services/sapClient";
+import { sqlAssistService } from "@/services/sqlAssistService";
 import type {
   SapODataEnvelope,
+  SapPreviewTableEnvelope,
   SapRunQueryEnvelope,
   SapRunQueryResult,
   SapSqlwbColumn,
   SapSqlwbPageChunk,
+  SapSqlwbTable,
 } from "@/types/sap";
 
 const servicePath = "opu/odata/sap/ZSQLWB_ODATA_SRV";
@@ -225,12 +228,6 @@ const activity: WorkbenchActivity[] = [
   },
 ];
 
-type SapEntityDefinition = {
-  name: string;
-  entityType: string;
-  keyFields: string[];
-};
-
 type SnapshotLoadResult = {
   snapshot: WorkbenchSnapshot;
   isLive: boolean;
@@ -276,6 +273,17 @@ function buildRunQueryPath(queryText: string, page = 1) {
   });
 
   return `${servicePath}/RunQuery?${searchParams.toString()}`;
+}
+
+function buildPreviewTablePath(objectName: string, maxRows = 20, page = 1) {
+  const searchParams = new URLSearchParams({
+    ProfileId: `'${queryProfileId}'`,
+    ObjectName: `'${escapeODataStringLiteral(objectName)}'`,
+    MaxRows: String(maxRows),
+    Page: String(page),
+  });
+
+  return `${servicePath}/PreviewTable?${searchParams.toString()}`;
 }
 
 function escapeODataStringLiteral(value: string) {
@@ -540,6 +548,20 @@ function unwrapRunQueryResult(payload: SapRunQueryEnvelope) {
   return data as SapRunQueryResult;
 }
 
+function unwrapPreviewTableResult(payload: SapPreviewTableEnvelope) {
+  const data = payload.d;
+
+  if (!data) {
+    return {};
+  }
+
+  if ("PreviewTable" in data && data.PreviewTable) {
+    return data.PreviewTable;
+  }
+
+  return data as SapRunQueryResult;
+}
+
 function parseRowsJson(rowsJson: string): WorkbenchRow[] {
   if (!rowsJson.trim()) {
     return [];
@@ -763,39 +785,61 @@ async function executeLiveRunQuery(
   };
 }
 
-function parseEntityDefinitions(metadataXml: string): SapEntityDefinition[] {
-  const entityTypeKeyMap = new Map<string, string[]>();
-  const entityTypeRegex =
-    /<EntityType\b[^>]*Name="([^"]+)"[\s\S]*?<Key>([\s\S]*?)<\/Key>[\s\S]*?<\/EntityType>/g;
+async function executeLivePreviewTable(
+  objectName: string,
+  maxRows = 20,
+  pageNumber = 1,
+): Promise<WorkbenchQueryExecution> {
+  const queryPath = buildPreviewTablePath(objectName, maxRows, pageNumber);
+  const result = unwrapPreviewTableResult(
+    await sapClient.request<SapPreviewTableEnvelope>(queryPath, {
+      method: "POST",
+    }),
+  );
 
-  for (const match of metadataXml.matchAll(entityTypeRegex)) {
-    const [, entityTypeName, keyBlock] = match;
-    const keyFields = [
-      ...keyBlock.matchAll(/<PropertyRef\b[^>]*Name="([^"]+)"/g),
-    ]
-      .map((keyMatch) => keyMatch[1])
-      .filter(Boolean);
-
-    if (entityTypeName) {
-      entityTypeKeyMap.set(entityTypeName, keyFields);
-    }
+  const status = (result.Status ?? "").toString().toUpperCase();
+  if (status && status !== "SUCCESS") {
+    throw Object.assign(
+      new Error(
+        result.ErrorText || `PreviewTable failed with status ${result.Status}`,
+      ),
+      {
+        status: 400,
+        sapStatus: result.Status,
+        sapErrorCode: result.ErrorCode,
+      },
+    );
   }
 
-  const entitySets: SapEntityDefinition[] = [];
-  const entitySetRegex =
-    /<EntitySet\b[^>]*Name="([^"]+)"[^>]*EntityType="([^"]+)"[^>]*\/?>(?:<\/EntitySet>)?/g;
+  const resultId = result.ResultId?.trim();
 
-  for (const match of metadataXml.matchAll(entitySetRegex)) {
-    const [, entitySetName, entityTypeName] = match;
-    const shortEntityType = entityTypeName?.split(".").pop() ?? entityTypeName;
-    entitySets.push({
-      name: entitySetName,
-      entityType: entityTypeName,
-      keyFields: entityTypeKeyMap.get(shortEntityType) ?? [],
+  if (!resultId) {
+    throw Object.assign(new Error("PreviewTable did not return ResultId"), {
+      status: 400,
+      sapStatus: result.Status,
+      sapErrorCode: result.ErrorCode || "MISSING_RESULT_ID",
     });
   }
 
-  return entitySets;
+  const page = Math.max(1, normalizeNumber(result.Page, pageNumber));
+  const {
+    columns: sapColumns,
+    debugResponse: columnDebugResponse,
+  } = await loadResultColumns(resultId);
+  const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
+    resultId,
+    page,
+  );
+  const debugResponses = [columnDebugResponse, ...chunkDebugResponses];
+
+  return {
+    entitySetName: result.ObjectName || objectName,
+    columns: normalizeColumns(sapColumns, rows),
+    rows,
+    debugResponses,
+    queryPath,
+    isCountQuery: false,
+  };
 }
 
 async function loadEntityRows(entitySetName: string) {
@@ -851,49 +895,38 @@ export async function executeWorkbenchQuery(
   };
 }
 
-function buildEntityDescription(entityType: string, rowCount: number) {
-  const shortType = entityType.split(".").pop() ?? entityType;
+function mapSearchTableToEntity(
+  table: SapSqlwbTable,
+  index: number,
+): WorkbenchEntity | null {
+  const objectName = table.ObjectName?.trim();
 
-  return `${shortType} exposed by ZSQLWB_ODATA_SRV${rowCount > 0 ? ` with ${rowCount} rows` : ""}`;
+  if (!objectName) {
+    return null;
+  }
+
+  const objectType = table.ObjectType?.trim() || "TABLE";
+  const description = table.Description?.trim() || `${objectType} ${objectName}`;
+
+  return {
+    name: objectName,
+    description,
+    recordCount: 0,
+    keyFields: [],
+    tags: ["SAP Whitelist", objectType],
+    lastSyncedRaw: `/Date(${Date.now() + index})/`,
+  };
 }
 
 async function buildLiveSnapshot(): Promise<WorkbenchSnapshot> {
-  const metadataXml = await sapClient.requestText(`${servicePath}/$metadata`);
-  const entityDefinitions = parseEntityDefinitions(metadataXml);
+  const allowedTables = await sqlAssistService.fetchAllTables();
+  const entities = allowedTables
+    .map((table, index) => mapSearchTableToEntity(table, index))
+    .filter((entity): entity is WorkbenchEntity => Boolean(entity))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  if (entityDefinitions.length === 0) {
-    return getFallbackSnapshot();
-  }
-
-  const entityResults = await Promise.all(
-    entityDefinitions.map(async (definition) => {
-      const rows = await loadEntityRows(definition.name);
-
-      return {
-        entity: {
-          name: definition.name,
-          description: buildEntityDescription(
-            definition.entityType,
-            rows.length,
-          ),
-          recordCount: rows.length,
-          keyFields: definition.keyFields.length
-            ? definition.keyFields
-            : Object.keys(rows[0] ?? {}).slice(0, 1),
-          tags: [
-            "SAP OData",
-            definition.entityType.split(".").pop() ?? "Entity",
-          ],
-          lastSyncedRaw: `/Date(${Date.now()})/`,
-        },
-        rows,
-      };
-    }),
-  );
-
-  const entities = entityResults.map(({ entity }) => entity);
   const rowsByEntity = Object.fromEntries(
-    entityResults.map(({ entity, rows }) => [entity.name, rows]),
+    entities.map((entity) => [entity.name, [] as WorkbenchRow[]]),
   );
 
   return {
@@ -904,9 +937,11 @@ async function buildLiveSnapshot(): Promise<WorkbenchSnapshot> {
     activity: [
       {
         id: "activity-live-1",
-        title: "Live SAP metadata loaded",
+        title: "Allowed SAP tables loaded",
         detail:
-          "Entity sets were discovered from $metadata through the proxy layer.",
+          entities.length > 0
+            ? "Object Explorer was populated from SearchTables without a search key."
+            : "SearchTables returned no queryable objects for the active profile.",
         timestampRaw: `/Date(${Date.now()})/`,
         tone: "success",
       },
@@ -955,5 +990,9 @@ export const workbenchService = {
     availableEntityNames: string[],
   ) => {
     return executeLiveRunQuery(queryText, fallbackEntity, availableEntityNames);
+  },
+
+  previewTable: async (objectName: string, maxRows = 20) => {
+    return executeLivePreviewTable(objectName, maxRows);
   },
 };

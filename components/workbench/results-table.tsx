@@ -14,6 +14,7 @@ import {
   Download,
   FileJson,
   FileSpreadsheet,
+  X,
 } from "lucide-react";
 
 import {
@@ -49,6 +50,7 @@ type ResultsTableProps = {
   columns: WorkbenchColumn[];
   debugResponses: WorkbenchDebugResponse[];
   rows: WorkbenchRow[];
+  onClose?: () => void;
 };
 
 type HeaderDragState = {
@@ -129,6 +131,7 @@ export function ResultsTable({
   columns,
   debugResponses,
   rows,
+  onClose,
 }: ResultsTableProps) {
   const [searchText, setSearchText] = useState("");
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -259,7 +262,7 @@ export function ResultsTable({
   const selectedDebugResponse = debugResponses[selectedDebugIndex];
 
   return (
-    <Card className="fiori-surface min-h-0 gap-0 py-0">
+    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
       <CardHeader className="border-b border-border px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -318,6 +321,17 @@ export function ResultsTable({
                 </div>
               ) : null}
             </div>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-transparent p-2 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+                aria-label="Hide Results"
+                title="Hide Results"
+              >
+                <X className="size-4" />
+              </button>
+            ) : null}
           </div>
         </div>
       </CardHeader>

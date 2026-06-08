@@ -44,6 +44,7 @@ export function useWorkbench() {
     buildTemplateQuery(snapshot.templates[0], defaultEntity),
   );
   const [isRunning, setIsRunning] = useState(false);
+  const [previewingEntityName, setPreviewingEntityName] = useState("");
   const [activeTemplateId, setActiveTemplateId] = useState(
     snapshot.templates[0]?.id ?? "",
   );
@@ -109,6 +110,12 @@ export function useWorkbench() {
 
             return nextName;
           });
+        } else {
+          setSelectedEntityName("");
+          setQueryText("");
+          setResultRows([]);
+          setResultColumns([]);
+          setResultDebugResponses([]);
         }
       } catch (err) {
         if (getErrorStatus(err) === 401) {
@@ -292,6 +299,56 @@ export function useWorkbench() {
     })();
   }
 
+  function previewTable(entityName: string) {
+    setSelectedEntityName(entityName);
+    setIsRunning(true);
+    setPreviewingEntityName(entityName);
+
+    void (async () => {
+      try {
+        const execution = await workbenchService.previewTable(entityName, 20);
+
+        setResultRows(execution.rows);
+        setResultColumns(execution.columns);
+        setResultDebugResponses(execution.debugResponses);
+        setSelectedEntityName(execution.entitySetName);
+
+        setActivityEntries((currentEntries) => [
+          {
+            id: `activity-${Date.now()}`,
+            title: `Preview loaded for ${execution.entitySetName}`,
+            detail: `Loaded ${execution.rows.length} preview rows through ${execution.queryPath}`,
+            timestampRaw: "/Date(1716496400000)/",
+            tone: "success",
+          },
+          ...currentEntries,
+        ]);
+      } catch (error) {
+        if (getErrorStatus(error) === 401) {
+          setNeedLogin(true);
+        }
+
+        setResultDebugResponses([]);
+        setActivityEntries((currentEntries) => [
+          {
+            id: `activity-${Date.now()}`,
+            title: `Preview failed for ${entityName}`,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "Unable to preview the selected SAP table.",
+            timestampRaw: "/Date(1716496400000)/",
+            tone: "warning",
+          },
+          ...currentEntries,
+        ]);
+      } finally {
+        setIsRunning(false);
+        setPreviewingEntityName("");
+      }
+    })();
+  }
+
   return {
     metrics,
     selectedEntity,
@@ -301,6 +358,7 @@ export function useWorkbench() {
     queryText,
     setQueryText,
     isRunning,
+    previewingEntityName,
     isLoadingSnapshot,
     loadError,
     needLogin,
@@ -312,5 +370,6 @@ export function useWorkbench() {
     handleEntityChange,
     applyTemplate,
     runQuery,
+    previewTable,
   };
 }

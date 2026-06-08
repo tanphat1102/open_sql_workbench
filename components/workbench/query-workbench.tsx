@@ -39,6 +39,7 @@ type QueryWorkbenchProps = {
   onSelectEntity: (entityName: string) => void;
   onApplyTemplate: (template: WorkbenchTemplate) => void;
   onRunQuery: () => void;
+  editorHeight?: string;
 };
 
 export function QueryWorkbench({
@@ -51,6 +52,7 @@ export function QueryWorkbench({
   onSelectEntity,
   onApplyTemplate,
   onRunQuery,
+  editorHeight = "340px",
 }: QueryWorkbenchProps) {
   const [templateSelectValue, setTemplateSelectValue] = useState<
     string | undefined
@@ -90,8 +92,8 @@ export function QueryWorkbench({
   }
 
   return (
-    <Card className="fiori-surface gap-0 py-0">
-      <CardContent className="space-y-0 p-0">
+    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <div className="flex flex-col gap-2 border-b border-border bg-[#f7fbff] px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
@@ -167,7 +169,7 @@ export function QueryWorkbench({
           </div>
         </div>
 
-        <div className="p-0">
+        <div className="min-h-0 flex-1 p-0">
           {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
           {/* @ts-ignore */}
           <SqlEditor
@@ -176,7 +178,7 @@ export function QueryWorkbench({
             onValidationChange={setSyntaxErrors}
             entities={entities}
             selectedEntityName={selectedEntityName}
-            height="340px"
+            height={editorHeight}
           />
         </div>
       </CardContent>

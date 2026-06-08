@@ -1,5 +1,7 @@
 "use client";
 
+import { X } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { parseSapDate } from "@/lib/sapParser";
@@ -7,6 +9,7 @@ import type { WorkbenchActivity } from "@/types/workbench";
 
 type ActionOutputProps = {
   activity: WorkbenchActivity[];
+  onClose?: () => void;
 };
 
 function formatSapDate(rawValue: string) {
@@ -20,22 +23,35 @@ function formatSapDate(rawValue: string) {
     : rawValue;
 }
 
-export function ActionOutput({ activity }: ActionOutputProps) {
+export function ActionOutput({ activity, onClose }: ActionOutputProps) {
   const latestWarning = activity.find((entry) => entry.tone === "warning");
 
   return (
-    <Card className="fiori-surface min-h-0 gap-0 py-0">
+    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
       <CardHeader className="border-b border-border px-3 py-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base text-foreground">Messages</CardTitle>
-          <div
-            className={
-              latestWarning
-                ? "rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800"
-                : "rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
-            }
-          >
-            {latestWarning ? "Warning" : "Ready"}
+          <div className="flex items-center gap-2">
+            <div
+              className={
+                latestWarning
+                  ? "rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800"
+                  : "rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+              }
+            >
+              {latestWarning ? "Warning" : "Ready"}
+            </div>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+                aria-label="Hide Messages"
+                title="Hide Messages"
+              >
+                <X className="size-4" />
+              </button>
+            ) : null}
           </div>
         </div>
       </CardHeader>

@@ -1,7 +1,6 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -11,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Eye, X } from "lucide-react";
 import { parseSapDate } from "@/lib/sapParser";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEntity } from "@/types/workbench";
@@ -19,6 +19,9 @@ type EntityBrowserProps = {
   entities: WorkbenchEntity[];
   selectedEntityName: string;
   onSelectEntity: (entityName: string) => void;
+  onPreviewEntity?: (entityName: string) => void;
+  previewingEntityName?: string;
+  onClose?: () => void;
 };
 
 function formatSapDate(rawValue: string) {
@@ -36,20 +39,39 @@ export function EntityBrowser({
   entities,
   selectedEntityName,
   onSelectEntity,
+  onPreviewEntity,
+  previewingEntityName = "",
+  onClose,
 }: EntityBrowserProps) {
   const selectedEntity =
     entities.find((entity) => entity.name === selectedEntityName) ??
     entities[0];
+  const selectedEntityType = selectedEntity?.tags[1] ?? "Object";
 
   return (
     <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
       <CardHeader className="border-b border-border px-3 py-2">
-        <CardTitle className="text-base text-foreground">
-          Object Explorer
-        </CardTitle>
-        <CardDescription className="text-xs">
-          Entity sets and key fields
-        </CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base text-foreground">
+              Object Explorer
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Entity sets and key fields
+            </CardDescription>
+          </div>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+              aria-label="Hide Object Explorer"
+              title="Hide Object Explorer"
+            >
+              <X className="size-4" />
+            </button>
+          ) : null}
+        </div>
       </CardHeader>
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
@@ -59,23 +81,26 @@ export function EntityBrowser({
               const isSelected = entity.name === selectedEntityName;
 
               return (
-                <Button
+                <div
                   key={entity.name}
-                  type="button"
-                  variant={isSelected ? "secondary" : "outline"}
-                  onClick={() => onSelectEntity(entity.name)}
                   className={cn(
-                    "h-auto w-full justify-start rounded-md border px-3 py-2 text-left transition",
+                    "flex items-start gap-2 rounded-md border p-2 transition",
                     isSelected
                       ? "border-primary/35 bg-accent text-foreground hover:bg-accent"
                       : "border-border bg-white text-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  <div className="w-full">
+                  <button
+                    type="button"
+                    onClick={() => onSelectEntity(entity.name)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="truncate font-medium">{entity.name}</div>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {entity.recordCount}
+                        {entity.recordCount > 0
+                          ? entity.recordCount
+                          : (entity.tags[1] ?? "Object")}
                       </span>
                     </div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">
@@ -83,8 +108,23 @@ export function EntityBrowser({
                         ? `Keys: ${entity.keyFields.join(", ")}`
                         : entity.description}
                     </div>
-                  </div>
-                </Button>
+                  </button>
+                  {onPreviewEntity ? (
+                    <button
+                      type="button"
+                      onClick={() => onPreviewEntity(entity.name)}
+                      disabled={previewingEntityName === entity.name}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+                      aria-label={`Preview ${entity.name}`}
+                      title={`Preview ${entity.name}`}
+                    >
+                      <Eye className="size-3.5" />
+                      {previewingEntityName === entity.name
+                        ? "Loading"
+                        : "Preview"}
+                    </button>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -104,14 +144,22 @@ export function EntityBrowser({
                 </div>
               </div>
               <Badge variant="outline" className="border-[#b8d6ef] text-primary">
-                {selectedEntity.keyFields.length} key fields
+                {selectedEntity.keyFields.length > 0
+                  ? `${selectedEntity.keyFields.length} key fields`
+                  : selectedEntityType}
               </Badge>
             </div>
 
             <div className="space-y-2 text-xs text-muted-foreground">
               <div>
-                <span className="text-muted-foreground">Keys: </span>
-                {selectedEntity.keyFields.join(", ")}
+                {selectedEntity.keyFields.length > 0 ? (
+                  <>
+                    <span className="text-muted-foreground">Keys: </span>
+                    {selectedEntity.keyFields.join(", ")}
+                  </>
+                ) : (
+                  selectedEntity.description
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">Last sync: </span>

@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   LogOut,
   RefreshCw,
+  Sidebar,
+  TableProperties,
+  MessageSquareText,
   UserCircle,
 } from "lucide-react";
 
@@ -20,11 +28,45 @@ import { toast } from "@/lib/toast";
 import { authService } from "@/services/authService";
 import type { SapSessionInfo } from "@/types/sap";
 
+type ResizeDragState =
+  | {
+      type: "objectExplorer";
+      startX: number;
+      startWidth: number;
+    }
+  | {
+      type: "query";
+      startY: number;
+      startHeight: number;
+      containerHeight: number;
+    }
+  | {
+      type: "messages";
+      startY: number;
+      startHeight: number;
+      containerHeight: number;
+    };
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 export function WorkbenchDashboard() {
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<SapSessionInfo | null>(null);
+  const [showObjectExplorer, setShowObjectExplorer] = useState(true);
+  const [showResults, setShowResults] = useState(true);
+  const [showMessages, setShowMessages] = useState(true);
+  const [objectExplorerWidth, setObjectExplorerWidth] = useState(300);
+  const [queryPanelHeight, setQueryPanelHeight] = useState(260);
+  const [messagesPanelHeight, setMessagesPanelHeight] = useState(150);
+  const [activeResize, setActiveResize] =
+    useState<ResizeDragState["type"] | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const lowerStackRef = useRef<HTMLDivElement | null>(null);
+  const resizeDragRef = useRef<ResizeDragState | null>(null);
   const {
     selectedEntity,
     selectedEntityName,
@@ -37,9 +79,11 @@ export function WorkbenchDashboard() {
     resultColumns,
     resultDebugResponses,
     resultRows,
+    previewingEntityName,
     handleEntityChange,
     applyTemplate,
     runQuery,
+    previewTable,
     needLogin,
   } = useWorkbench();
 
@@ -115,9 +159,114 @@ export function WorkbenchDashboard() {
     }
   }
 
+  function beginObjectExplorerResize(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    resizeDragRef.current = {
+      type: "objectExplorer",
+      startX: event.clientX,
+      startWidth: objectExplorerWidth,
+    };
+    setActiveResize("objectExplorer");
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function beginQueryResize(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !workspaceRef.current) {
+      return;
+    }
+
+    resizeDragRef.current = {
+      type: "query",
+      startY: event.clientY,
+      startHeight: queryPanelHeight,
+      containerHeight: workspaceRef.current.clientHeight,
+    };
+    setActiveResize("query");
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function beginMessagesResize(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !lowerStackRef.current) {
+      return;
+    }
+
+    resizeDragRef.current = {
+      type: "messages",
+      startY: event.clientY,
+      startHeight: messagesPanelHeight,
+      containerHeight: lowerStackRef.current.clientHeight,
+    };
+    setActiveResize("messages");
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleResizeMove(event: PointerEvent<HTMLDivElement>) {
+    const dragState = resizeDragRef.current;
+
+    if (!dragState) {
+      return;
+    }
+
+    if (dragState.type === "objectExplorer") {
+      setObjectExplorerWidth(
+        clamp(dragState.startWidth + event.clientX - dragState.startX, 220, 560),
+      );
+    }
+
+    if (dragState.type === "query") {
+      setQueryPanelHeight(
+        clamp(
+          dragState.startHeight + event.clientY - dragState.startY,
+          180,
+          Math.max(220, dragState.containerHeight - 180),
+        ),
+      );
+    }
+
+    if (dragState.type === "messages") {
+      setMessagesPanelHeight(
+        clamp(
+          dragState.startHeight - (event.clientY - dragState.startY),
+          96,
+          Math.max(120, dragState.containerHeight - 160),
+        ),
+      );
+    }
+
+    event.preventDefault();
+  }
+
+  function endResize(event: PointerEvent<HTMLDivElement>) {
+    const dragState = resizeDragRef.current;
+
+    if (!dragState) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    resizeDragRef.current = null;
+    setActiveResize(null);
+  }
+
+  const hasLowerPanel = showResults || showMessages;
+  const isResizing = activeResize !== null;
+
   return (
-    <main className="fiori-page min-h-screen px-3 py-3 text-sm sm:px-4">
-      <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[1800px] flex-col gap-3">
+    <main
+      className={`fiori-page h-dvh overflow-hidden px-3 py-3 text-sm sm:px-4 ${
+        isResizing ? "cursor-grabbing select-none" : ""
+      }`}
+    >
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-3">
         <header className="fiori-shell-bar flex flex-col gap-2 rounded-lg px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
@@ -133,6 +282,45 @@ export function WorkbenchDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowObjectExplorer((current) => !current)}
+              className={
+                showObjectExplorer
+                  ? "border-primary/35 bg-accent text-primary hover:bg-accent"
+                  : "border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+              }
+            >
+              <Sidebar />
+              Object Explorer
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowResults((current) => !current)}
+              className={
+                showResults
+                  ? "border-primary/35 bg-accent text-primary hover:bg-accent"
+                  : "border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+              }
+            >
+              <TableProperties />
+              Results
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowMessages((current) => !current)}
+              className={
+                showMessages
+                  ? "border-primary/35 bg-accent text-primary hover:bg-accent"
+                  : "border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+              }
+            >
+              <MessageSquareText />
+              Messages
+            </Button>
             <Button
               type="button"
               onClick={runQuery}
@@ -179,35 +367,128 @@ export function WorkbenchDashboard() {
           </div>
         </header>
 
-        <div className="grid flex-1 gap-3 lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="min-h-0">
-            <EntityBrowser
-              entities={entities}
-              selectedEntityName={selectedEntityName}
-              onSelectEntity={handleEntityChange}
-            />
-          </aside>
+        <div className="flex min-h-0 flex-1">
+          {showObjectExplorer ? (
+            <aside
+              className="min-h-0 shrink-0"
+              style={{ width: `${objectExplorerWidth}px` }}
+            >
+              <EntityBrowser
+                entities={entities}
+                selectedEntityName={selectedEntityName}
+                onSelectEntity={handleEntityChange}
+                onPreviewEntity={(entityName) => {
+                  setShowResults(true);
+                  previewTable(entityName);
+                }}
+                previewingEntityName={previewingEntityName}
+                onClose={() => setShowObjectExplorer(false)}
+              />
+            </aside>
+          ) : null}
+          {showObjectExplorer ? (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              className="group flex w-3 shrink-0 cursor-col-resize items-center justify-center"
+              onPointerDown={beginObjectExplorerResize}
+              onPointerMove={handleResizeMove}
+              onPointerUp={endResize}
+              onPointerCancel={endResize}
+              title="Resize Object Explorer"
+            >
+              <div className="h-16 w-1 rounded-full bg-border transition group-hover:bg-primary/60" />
+            </div>
+          ) : null}
 
-          <div className="grid min-h-0 grid-rows-[auto_minmax(260px,1fr)_220px] gap-3">
-            <QueryWorkbench
-              selectedEntityName={selectedEntityName}
-              entities={entities}
-              queryText={queryText}
-              templates={templates}
-              isRunning={isRunning}
-              onQueryTextChange={setQueryText}
-              onSelectEntity={handleEntityChange}
-              onApplyTemplate={applyTemplate}
-              onRunQuery={runQuery}
-            />
+          <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div
+              className={hasLowerPanel ? "min-h-0 shrink-0" : "min-h-0 flex-1"}
+              style={hasLowerPanel ? { height: `${queryPanelHeight}px` } : undefined}
+            >
+              <QueryWorkbench
+                selectedEntityName={selectedEntityName}
+                entities={entities}
+                queryText={queryText}
+                templates={templates}
+                isRunning={isRunning}
+                onQueryTextChange={setQueryText}
+                onSelectEntity={handleEntityChange}
+                onApplyTemplate={applyTemplate}
+                onRunQuery={runQuery}
+                editorHeight="100%"
+              />
+            </div>
 
-            <ResultsTable
-              entityName={selectedEntity?.name ?? selectedEntityName}
-              columns={resultColumns}
-              debugResponses={resultDebugResponses}
-              rows={resultRows}
-            />
-            <ActionOutput activity={activityEntries} />
+            {hasLowerPanel ? (
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center"
+                onPointerDown={beginQueryResize}
+                onPointerMove={handleResizeMove}
+                onPointerUp={endResize}
+                onPointerCancel={endResize}
+                title="Resize Query and lower panel"
+              >
+                <div className="h-1 w-16 rounded-full bg-border transition group-hover:bg-primary/60" />
+              </div>
+            ) : null}
+
+            {showResults && showMessages ? (
+              <div
+                ref={lowerStackRef}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <div className="min-h-0 flex-1">
+                  <ResultsTable
+                    entityName={selectedEntity?.name ?? selectedEntityName}
+                    columns={resultColumns}
+                    debugResponses={resultDebugResponses}
+                    rows={resultRows}
+                    onClose={() => setShowResults(false)}
+                  />
+                </div>
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center"
+                  onPointerDown={beginMessagesResize}
+                  onPointerMove={handleResizeMove}
+                  onPointerUp={endResize}
+                  onPointerCancel={endResize}
+                  title="Resize Results and Messages"
+                >
+                  <div className="h-1 w-16 rounded-full bg-border transition group-hover:bg-primary/60" />
+                </div>
+                <div
+                  className="min-h-0 shrink-0"
+                  style={{ height: `${messagesPanelHeight}px` }}
+                >
+                  <ActionOutput
+                    activity={activityEntries}
+                    onClose={() => setShowMessages(false)}
+                  />
+                </div>
+              </div>
+            ) : showResults ? (
+              <div className="min-h-0 flex-1">
+                <ResultsTable
+                  entityName={selectedEntity?.name ?? selectedEntityName}
+                  columns={resultColumns}
+                  debugResponses={resultDebugResponses}
+                  rows={resultRows}
+                  onClose={() => setShowResults(false)}
+                />
+              </div>
+            ) : showMessages ? (
+              <div className="min-h-0 flex-1">
+                <ActionOutput
+                  activity={activityEntries}
+                  onClose={() => setShowMessages(false)}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
