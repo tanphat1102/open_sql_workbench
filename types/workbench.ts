@@ -33,6 +33,18 @@ export type WorkbenchMetric = {
 
 export type WorkbenchRow = Record<string, string | number | boolean | null>;
 
+export type WorkbenchPageInfo = {
+  resultId?: string;
+  rowCount: number;
+  returnedRows: number;
+  totalRows: number;
+  maxRows: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  truncated: boolean;
+};
+
 export type WorkbenchActivity = {
   id: string;
   title: string;

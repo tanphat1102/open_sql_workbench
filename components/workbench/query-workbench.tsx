@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/select";
 import { formatOpenSql } from "@/lib/openSqlFormatter";
 import { toast } from "@/lib/toast";
-import type { SqlValidationError } from "@/lib/openSqlValidation";
 import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
 
 const SqlEditor = dynamic(
@@ -57,18 +56,7 @@ export function QueryWorkbench({
   const [templateSelectValue, setTemplateSelectValue] = useState<
     string | undefined
   >();
-  const [syntaxErrors, setSyntaxErrors] = useState<SqlValidationError[]>([]);
-
   function handleRunQuery() {
-    if (syntaxErrors.length > 0) {
-      toast({
-        title: "SQL syntax needs attention",
-        description: syntaxErrors[0].message,
-        variant: "destructive",
-      });
-      return;
-    }
-
     onRunQuery();
   }
 
@@ -161,7 +149,7 @@ export function QueryWorkbench({
             </Button>
             <Button
               onClick={handleRunQuery}
-              disabled={isRunning || syntaxErrors.length > 0}
+              disabled={isRunning}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isRunning ? "Executing..." : "Execute"}
@@ -175,7 +163,6 @@ export function QueryWorkbench({
           <SqlEditor
             value={queryText}
             onChange={(v: string) => onQueryTextChange(v)}
-            onValidationChange={setSyntaxErrors}
             entities={entities}
             selectedEntityName={selectedEntityName}
             height={editorHeight}

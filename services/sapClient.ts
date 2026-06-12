@@ -4,7 +4,12 @@ import type { SapODataEnvelope, SapQueryParam } from "@/types/sap";
 
 function buildSapUrl(path: string, query?: Record<string, SapQueryParam>) {
   const normalizedPath = path.replace(/^\/+/, "");
-  const url = new URL(`/api/sap/${normalizedPath}`, "http://localhost");
+  const queryStartIndex = normalizedPath.indexOf("?");
+  const pathname =
+    queryStartIndex >= 0 ? normalizedPath.slice(0, queryStartIndex) : normalizedPath;
+  const rawQuery =
+    queryStartIndex >= 0 ? normalizedPath.slice(queryStartIndex + 1) : "";
+  const url = new URL(`/api/sap/${pathname}`, "http://localhost");
 
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
@@ -16,7 +21,7 @@ function buildSapUrl(path: string, query?: Record<string, SapQueryParam>) {
     });
   }
 
-  return `${url.pathname}${url.search}`;
+  return `${url.pathname}${query ? url.search : rawQuery ? `?${rawQuery}` : ""}`;
 }
 
 type SapClientError = Error & {

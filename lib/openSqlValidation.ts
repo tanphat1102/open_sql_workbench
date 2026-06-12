@@ -78,6 +78,222 @@ function addUnknownEntityError(
   });
 }
 
+function getSelectProjection(query: string, fromIndex: number) {
+  const rawProjection = query.slice("SELECT".length, fromIndex);
+  const trimmedProjection = rawProjection.trim();
+  const leadingWhitespace = rawProjection.length - rawProjection.trimStart().length;
+
+  return {
+    text: trimmedProjection,
+    startIndex: "SELECT".length + leadingWhitespace,
+  };
+}
+
+function splitProjectionFields(projection: string) {
+  return projection.split(",").reduce<Array<{ text: string; startIndex: number }>>(
+    (fields, part) => {
+      const previousLength = fields.reduce(
+        (total, field) => total + field.text.length + 1,
+        0,
+      );
+      const leadingWhitespace = part.length - part.trimStart().length;
+      const text = part.trim();
+
+      if (text) {
+        fields.push({
+          text,
+          startIndex: previousLength + leadingWhitespace,
+        });
+      }
+
+      return fields;
+    },
+    [],
+  );
+}
+
+function getJoinAliasNames(query: string) {
+  const aliases = new Set<string>();
+  const fromAliasMatch =
+    /\bFROM\s+[A-Z0-9_./-]+\s+AS\s+([A-Z_][A-Z0-9_]*)/i.exec(query);
+
+  if (fromAliasMatch?.[1]) {
+    aliases.add(fromAliasMatch[1].toUpperCase());
+  }
+
+  for (const joinMatch of query.matchAll(
+    /\bINNER\s+JOIN\s+[A-Z0-9_./-]+\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
+  )) {
+    if (joinMatch[1]) {
+      aliases.add(joinMatch[1].toUpperCase());
+    }
+  }
+
+  return aliases;
+}
+
+function isAggregateProjectionExpression(fieldExpression: string) {
+  return /^(COUNT|SUM|AVG|MIN|MAX)\s*\(\s*(?:\*|[A-Z_][A-Z0-9_]*(?:~[A-Z_][A-Z0-9_]*)?)\s*\)\s+AS\s+[A-Z_][A-Z0-9_]*$/i.test(
+    fieldExpression,
+  );
+}
+
+function validateJoinSql(
+  query: string,
+  fromIndex: number,
+  projection: { text: string; startIndex: number },
+  availableEntityNames: string[],
+) {
+  const errors: SqlValidationError[] = [];
+  const hasJoin = /\bJOIN\b/i.test(query);
+
+  if (!hasJoin) {
+    return errors;
+  }
+
+  for (const joinMatch of query.matchAll(/\b(?:[A-Z]+\s+)?JOIN\b/gi)) {
+    const joinText = joinMatch[0];
+
+    if (/^INNER\s+JOIN$/i.test(joinText)) {
+      continue;
+    }
+
+    const joinIndex = joinMatch.index ?? findKeywordIndex(query, "JOIN");
+    errors.push({
+      message: "JOIN supports INNER JOIN only.",
+      startColumn: Math.max(1, joinIndex + 1),
+      endColumn: Math.max(2, joinIndex + joinText.length + 1),
+    });
+  }
+
+  const fromAliasMatch =
+    /\bFROM\s+([A-Z0-9_./-]+)(?:\s+AS\s+([A-Z_][A-Z0-9_]*))?/i.exec(query);
+  if (fromAliasMatch?.[1] && !fromAliasMatch[2]) {
+    const tableIndex = fromAliasMatch.index + fromAliasMatch[0].length;
+    errors.push({
+      message: "JOIN requires an alias for the FROM table, for example FROM spfli AS a.",
+      startColumn: tableIndex + 1,
+      endColumn: tableIndex + 1,
+    });
+  }
+
+  for (const innerJoinTableMatch of query.matchAll(
+    /\bINNER\s+JOIN\s+([A-Z0-9_./-]+)(?:\s+AS\s+([A-Z_][A-Z0-9_]*))?/gi,
+  )) {
+    if (!innerJoinTableMatch[1]) {
+      continue;
+    }
+
+    const joinedTableIndex =
+      innerJoinTableMatch.index +
+      innerJoinTableMatch[0].toUpperCase().indexOf(
+        innerJoinTableMatch[1].toUpperCase(),
+      );
+    addUnknownEntityError(
+      errors,
+      innerJoinTableMatch[1],
+      joinedTableIndex,
+      availableEntityNames,
+    );
+
+    if (!innerJoinTableMatch[2]) {
+      const tableIndex = innerJoinTableMatch.index + innerJoinTableMatch[0].length;
+      errors.push({
+        message: "JOIN requires an alias for the joined table, for example INNER JOIN scarr AS b.",
+        startColumn: tableIndex + 1,
+        endColumn: tableIndex + 1,
+      });
+    }
+  }
+
+  if (!/\bON\b/i.test(query)) {
+    const joinIndex = findKeywordIndex(query, "JOIN");
+    errors.push({
+      message: "INNER JOIN requires an ON condition.",
+      startColumn: Math.max(1, joinIndex + 1),
+      endColumn: Math.max(2, query.length + 1),
+    });
+  }
+
+  if (projection.text === "*") {
+    errors.push({
+      message: "JOIN does not support SELECT *. Choose fields as alias~field.",
+      startColumn: projection.startIndex + 1,
+      endColumn: projection.startIndex + projection.text.length + 1,
+    });
+  }
+
+  const aliasNames = getJoinAliasNames(query);
+  splitProjectionFields(projection.text).forEach((field) => {
+    const rawFieldExpression = field.text;
+    const fieldExpression = rawFieldExpression.replace(
+      /\s+AS\s+[A-Z_][A-Z0-9_]*$/i,
+      "",
+    );
+
+    if (fieldExpression === "*") {
+      return;
+    }
+
+    const aliasFieldMatch = /^([A-Z_][A-Z0-9_]*)~([A-Z_][A-Z0-9_]*)$/i.exec(
+      fieldExpression,
+    );
+
+    if (!aliasFieldMatch && isAggregateProjectionExpression(rawFieldExpression)) {
+      return;
+    }
+
+    if (!aliasFieldMatch) {
+      errors.push({
+        message: "Selected fields in JOIN must use alias~field, for example a~carrid.",
+        startColumn: projection.startIndex + field.startIndex + 1,
+        endColumn: projection.startIndex + field.startIndex + field.text.length + 1,
+      });
+      return;
+    }
+
+    if (
+      aliasNames.size > 0 &&
+      aliasFieldMatch[1] &&
+      !aliasNames.has(aliasFieldMatch[1].toUpperCase())
+    ) {
+      errors.push({
+        message: `Unknown JOIN alias "${aliasFieldMatch[1]}".`,
+        startColumn: projection.startIndex + field.startIndex + 1,
+        endColumn:
+          projection.startIndex + field.startIndex + aliasFieldMatch[1].length + 1,
+      });
+    }
+  });
+
+  const joinFieldPattern =
+    /(?<!~)\b([A-Z_][A-Z0-9_]*)(?:~([A-Z_][A-Z0-9_]*))?(?=\s*(?:=|<>|!=|>=|<=|>|<)|\s+(?:LIKE|IN|BETWEEN|IS)\b)/gi;
+  for (const match of query.matchAll(joinFieldPattern)) {
+    if (match.index === undefined || !match[1]) {
+      continue;
+    }
+
+    if (!match[2]) {
+      errors.push({
+        message: "JOIN conditions must use alias~field.",
+        startColumn: match.index + 1,
+        endColumn: match.index + match[1].length + 1,
+      });
+      continue;
+    }
+
+    if (aliasNames.size > 0 && !aliasNames.has(match[1].toUpperCase())) {
+      errors.push({
+        message: `Unknown JOIN alias "${match[1]}".`,
+        startColumn: match.index + 1,
+        endColumn: match.index + match[1].length + 1,
+      });
+    }
+  }
+
+  return errors;
+}
+
 export function validateOpenSql(
   queryText: string,
   options: OpenSqlValidationOptions = {},
@@ -191,7 +407,8 @@ export function validateOpenSql(
         endColumn: query.length + 1,
       });
     } else {
-      const projection = query.slice("SELECT".length, fromIndex).trim();
+      const projectionInfo = getSelectProjection(query, fromIndex);
+      const projection = projectionInfo.text;
       if (!projection) {
         errors.push({
           message: "SELECT statement needs at least one field or * before FROM.",
@@ -207,6 +424,15 @@ export function validateOpenSql(
           endColumn: fromIndex + 1,
         });
       }
+
+      errors.push(
+        ...validateJoinSql(
+          query,
+          fromIndex,
+          projectionInfo,
+          availableEntityNames,
+        ),
+      );
 
       const fromClause = query.slice(fromIndex + "FROM".length).trim();
       if (!fromClause || /^(WHERE|ORDER\s+BY|GROUP\s+BY)\b/i.test(fromClause)) {

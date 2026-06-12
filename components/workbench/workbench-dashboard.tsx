@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   LogOut,
-  RefreshCw,
   Sidebar,
   TableProperties,
   MessageSquareText,
@@ -57,8 +56,8 @@ export function WorkbenchDashboard() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<SapSessionInfo | null>(null);
   const [showObjectExplorer, setShowObjectExplorer] = useState(true);
-  const [showResults, setShowResults] = useState(true);
-  const [showMessages, setShowMessages] = useState(true);
+  const [showResults, setShowResults] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
   const [objectExplorerWidth, setObjectExplorerWidth] = useState(300);
   const [queryPanelHeight, setQueryPanelHeight] = useState(260);
   const [messagesPanelHeight, setMessagesPanelHeight] = useState(150);
@@ -78,12 +77,14 @@ export function WorkbenchDashboard() {
     activityEntries,
     resultColumns,
     resultDebugResponses,
+    resultPageInfo,
     resultRows,
     previewingEntityName,
     handleEntityChange,
     applyTemplate,
     runQuery,
     previewTable,
+    loadResultPage,
     needLogin,
   } = useWorkbench();
 
@@ -157,6 +158,11 @@ export function WorkbenchDashboard() {
       setIsLoggingOut(false);
       setProfileOpen(false);
     }
+  }
+
+  function executeAndShowResults() {
+    setShowResults(true);
+    runQuery();
   }
 
   function beginObjectExplorerResize(event: PointerEvent<HTMLDivElement>) {
@@ -277,7 +283,7 @@ export function WorkbenchDashboard() {
             </span>
             <span className="text-muted-foreground">|</span>
             <span className="text-muted-foreground">
-              {resultRows.length} result rows
+              Page {resultPageInfo.page || "-"}: {resultRows.length} rows
             </span>
           </div>
 
@@ -320,14 +326,6 @@ export function WorkbenchDashboard() {
             >
               <MessageSquareText />
               Messages
-            </Button>
-            <Button
-              type="button"
-              onClick={runQuery}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              <RefreshCw />
-              Execute
             </Button>
             <div className="relative">
               <Button
@@ -415,7 +413,7 @@ export function WorkbenchDashboard() {
                 onQueryTextChange={setQueryText}
                 onSelectEntity={handleEntityChange}
                 onApplyTemplate={applyTemplate}
-                onRunQuery={runQuery}
+                onRunQuery={executeAndShowResults}
                 editorHeight="100%"
               />
             </div>
@@ -445,7 +443,9 @@ export function WorkbenchDashboard() {
                     entityName={selectedEntity?.name ?? selectedEntityName}
                     columns={resultColumns}
                     debugResponses={resultDebugResponses}
+                    pageInfo={resultPageInfo}
                     rows={resultRows}
+                    onPageChange={loadResultPage}
                     onClose={() => setShowResults(false)}
                   />
                 </div>
@@ -477,7 +477,9 @@ export function WorkbenchDashboard() {
                   entityName={selectedEntity?.name ?? selectedEntityName}
                   columns={resultColumns}
                   debugResponses={resultDebugResponses}
+                  pageInfo={resultPageInfo}
                   rows={resultRows}
+                  onPageChange={loadResultPage}
                   onClose={() => setShowResults(false)}
                 />
               </div>

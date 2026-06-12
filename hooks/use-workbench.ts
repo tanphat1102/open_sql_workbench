@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { validateOpenSql } from "@/lib/openSqlValidation";
 import { workbenchService } from "@/services/workbenchService";
 import type {
   WorkbenchColumn,
   WorkbenchDebugResponse,
+  WorkbenchPageInfo,
   WorkbenchRow,
   WorkbenchTemplate,
 } from "@/types/workbench";
@@ -38,6 +38,23 @@ function getErrorStatus(error: unknown) {
     : undefined;
 }
 
+function buildLocalPageInfo(rows: WorkbenchRow[]): WorkbenchPageInfo {
+  return {
+    rowCount: rows.length,
+    returnedRows: rows.length,
+    totalRows: rows.length,
+    maxRows: rows.length,
+    page: rows.length > 0 ? 1 : 0,
+    pageSize: rows.length,
+    totalPages: rows.length > 0 ? 1 : 0,
+    truncated: false,
+  };
+}
+
+type ResultSource =
+  | { type: "query" }
+  | { type: "preview"; entityName: string };
+
 export function useWorkbench() {
   const [selectedEntityName, setSelectedEntityName] = useState(defaultEntity);
   const [queryText, setQueryText] = useState(
@@ -61,6 +78,12 @@ export function useWorkbench() {
   const [resultDebugResponses, setResultDebugResponses] = useState<
     WorkbenchDebugResponse[]
   >([]);
+  const [resultPageInfo, setResultPageInfo] = useState<WorkbenchPageInfo>(
+    buildLocalPageInfo(snapshot.rowsByEntity[defaultEntity] ?? []),
+  );
+  const [resultSource, setResultSource] = useState<ResultSource>({
+    type: "query",
+  });
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
@@ -107,6 +130,7 @@ export function useWorkbench() {
             setResultRows(nextRows);
             setResultColumns(buildFallbackColumns(nextRows));
             setResultDebugResponses([]);
+            setResultPageInfo(buildLocalPageInfo(nextRows));
 
             return nextName;
           });
@@ -116,6 +140,7 @@ export function useWorkbench() {
           setResultRows([]);
           setResultColumns([]);
           setResultDebugResponses([]);
+          setResultPageInfo(buildLocalPageInfo([]));
         }
       } catch (err) {
         if (getErrorStatus(err) === 401) {
@@ -220,6 +245,7 @@ export function useWorkbench() {
     setResultRows(nextRows);
     setResultColumns(buildFallbackColumns(nextRows));
     setResultDebugResponses([]);
+    setResultPageInfo(buildLocalPageInfo(nextRows));
   }
 
   function applyTemplate(template: WorkbenchTemplate) {
@@ -227,26 +253,7 @@ export function useWorkbench() {
     setQueryText(buildTemplateQuery(template, selectedEntityName));
   }
 
-  function runQuery() {
-    const syntaxErrors = validateOpenSql(queryText, {
-      availableEntityNames: entities.map((entity) => entity.name),
-      validateEntityNames: false,
-    });
-
-    if (syntaxErrors.length > 0) {
-      setActivityEntries((currentEntries) => [
-        {
-          id: `activity-${Date.now()}`,
-          title: "Query syntax error",
-          detail: syntaxErrors[0].message,
-          timestampRaw: "/Date(1716496400000)/",
-          tone: "warning",
-        },
-        ...currentEntries,
-      ]);
-      return;
-    }
-
+  function runQuery(page = 1) {
     setIsRunning(true);
 
     void (async () => {
@@ -255,11 +262,14 @@ export function useWorkbench() {
           queryText,
           selectedEntityName,
           entities.map((entity) => entity.name),
+          page,
         );
 
         setResultRows(execution.rows);
         setResultColumns(execution.columns);
         setResultDebugResponses(execution.debugResponses);
+        setResultPageInfo(execution.pageInfo);
+        setResultSource({ type: "query" });
         setSelectedEntityName(execution.entitySetName);
 
         setActivityEntries((currentEntries) => [
@@ -268,7 +278,7 @@ export function useWorkbench() {
             title: `Query executed for ${execution.entitySetName}`,
             detail: execution.isCountQuery
               ? `Counted ${execution.rows[0]?.RecordCount ?? 0} records through ${execution.queryPath}`
-              : `Loaded ${execution.rows.length} rows through ${execution.queryPath}`,
+              : `Loaded page ${execution.pageInfo.page} with ${execution.rows.length} rows through ${execution.queryPath}`,
             timestampRaw: "/Date(1716496400000)/",
             tone: "success",
           },
@@ -299,25 +309,27 @@ export function useWorkbench() {
     })();
   }
 
-  function previewTable(entityName: string) {
+  function previewTable(entityName: string, page = 1) {
     setSelectedEntityName(entityName);
     setIsRunning(true);
     setPreviewingEntityName(entityName);
 
     void (async () => {
       try {
-        const execution = await workbenchService.previewTable(entityName, 20);
+        const execution = await workbenchService.previewTable(entityName, undefined, page);
 
         setResultRows(execution.rows);
         setResultColumns(execution.columns);
         setResultDebugResponses(execution.debugResponses);
+        setResultPageInfo(execution.pageInfo);
+        setResultSource({ type: "preview", entityName });
         setSelectedEntityName(execution.entitySetName);
 
         setActivityEntries((currentEntries) => [
           {
             id: `activity-${Date.now()}`,
             title: `Preview loaded for ${execution.entitySetName}`,
-            detail: `Loaded ${execution.rows.length} preview rows through ${execution.queryPath}`,
+            detail: `Loaded preview page ${execution.pageInfo.page} with ${execution.rows.length} rows through ${execution.queryPath}`,
             timestampRaw: "/Date(1716496400000)/",
             tone: "success",
           },
@@ -349,6 +361,19 @@ export function useWorkbench() {
     })();
   }
 
+  function loadResultPage(page: number) {
+    if (page < 1 || (resultPageInfo.totalPages > 0 && page > resultPageInfo.totalPages)) {
+      return;
+    }
+
+    if (resultSource.type === "preview") {
+      previewTable(resultSource.entityName, page);
+      return;
+    }
+
+    runQuery(page);
+  }
+
   return {
     metrics,
     selectedEntity,
@@ -366,10 +391,12 @@ export function useWorkbench() {
     activityEntries,
     resultColumns,
     resultDebugResponses,
+    resultPageInfo,
     resultRows,
     handleEntityChange,
     applyTemplate,
     runQuery,
     previewTable,
+    loadResultPage,
   };
 }

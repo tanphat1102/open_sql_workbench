@@ -50,6 +50,16 @@ type SemanticValidationError = {
   length: number;
 };
 
+type QueryTableReference = {
+  tableName: string;
+  alias: string;
+};
+
+type FieldCompletionContext = {
+  range: monaco.IRange;
+  token: string;
+};
+
 const sqlKeywords = [
   "SELECT",
   "TOP",
@@ -384,7 +394,8 @@ function getTableCompletionContext(
 ) {
   const offset = model.getOffsetAt(position);
   const beforeCursor = model.getValue().slice(0, offset);
-  const match = /\bFROM\s+([A-Z0-9_./-]*)$/i.exec(beforeCursor);
+  const match =
+    /\b(?:FROM|INNER\s+JOIN)\s+([A-Z0-9_./-]*)$/i.exec(beforeCursor);
 
   if (!match) {
     return null;
@@ -398,8 +409,121 @@ function getTableCompletionContext(
   };
 }
 
+function getJoinFieldCompletionContext(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+): FieldCompletionContext | null {
+  const offset = model.getOffsetAt(position);
+  const beforeCursor = model.getValue().slice(0, offset);
+  const onMatches = [...beforeCursor.matchAll(/\bON\b/gi)];
+  const lastOnMatch = onMatches.at(-1);
+
+  if (lastOnMatch?.index === undefined) {
+    return null;
+  }
+
+  const textAfterOn = beforeCursor.slice(lastOnMatch.index + lastOnMatch[0].length);
+  const tokenMatch =
+    /(?:^|[\s(=<>!,])([A-Z_][A-Z0-9_]*(?:~[A-Z0-9_]*)?)$/i.exec(textAfterOn);
+  const token = tokenMatch?.[1] ?? "";
+
+  if (!token) {
+    return null;
+  }
+
+  const tokenStartOffset = offset - token.length;
+  const tokenStart = model.getPositionAt(tokenStartOffset);
+  const tokenEnd = model.getPositionAt(offset);
+
+  return {
+    token,
+    range: {
+      startLineNumber: tokenStart.lineNumber,
+      endLineNumber: tokenEnd.lineNumber,
+      startColumn: tokenStart.column,
+      endColumn: tokenEnd.column,
+    },
+  };
+}
+
 function getPrimaryTableName(query: string) {
   return /\bFROM\s+([A-Z0-9_./-]+)/i.exec(query)?.[1]?.toUpperCase() ?? "";
+}
+
+function getJoinTableReferences(query: string): QueryTableReference[] {
+  const references: QueryTableReference[] = [];
+  const fromAliasMatch =
+    /\bFROM\s+([A-Z0-9_./-]+)\s+AS\s+([A-Z_][A-Z0-9_]*)/i.exec(query);
+
+  if (fromAliasMatch?.[1] && fromAliasMatch[2]) {
+    references.push({
+      tableName: fromAliasMatch[1].toUpperCase(),
+      alias: fromAliasMatch[2],
+    });
+  }
+
+  for (const joinMatch of query.matchAll(
+    /\bINNER\s+JOIN\s+([A-Z0-9_./-]+)\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
+  )) {
+    if (joinMatch[1] && joinMatch[2]) {
+      references.push({
+        tableName: joinMatch[1].toUpperCase(),
+        alias: joinMatch[2],
+      });
+    }
+  }
+
+  return references;
+}
+
+function hasJoin(query: string) {
+  return /\bJOIN\b/i.test(query);
+}
+
+function shouldAutoTriggerJoinFieldSuggest(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+  context: EditorContext,
+) {
+  const fieldContext = getJoinFieldCompletionContext(model, position);
+
+  if (!fieldContext || fieldContext.token.includes("~")) {
+    return false;
+  }
+
+  const normalizedToken = fieldContext.token.toLowerCase();
+  const tableReferences = getJoinTableReferences(model.getValue());
+
+  return tableReferences.some(
+    (tableReference) =>
+      tableReference.alias.toLowerCase() === normalizedToken &&
+      isKnownTableName(tableReference.tableName, context),
+  );
+}
+
+function shouldAutoTriggerClauseFieldSuggest(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+  context: EditorContext,
+) {
+  const offset = model.getOffsetAt(position);
+  const beforeCursor = model.getValue().slice(0, offset);
+
+  if (!/\b(?:ORDER\s+BY|GROUP\s+BY)\s*$/i.test(beforeCursor)) {
+    return false;
+  }
+
+  const tableReferences = getJoinTableReferences(model.getValue());
+
+  if (tableReferences.length > 1) {
+    return tableReferences.every((tableReference) =>
+      isKnownTableName(tableReference.tableName, context),
+    );
+  }
+
+  const tableName = getPrimaryTableName(model.getValue());
+
+  return Boolean(tableName && isKnownTableName(tableName, context));
 }
 
 function getKnownEntityNames(context: EditorContext, assistState: CompletionAssistState) {
@@ -439,13 +563,13 @@ function isKnownTableName(
 function getFieldCompletionContext(
   model: monaco.editor.ITextModel,
   position: monaco.Position,
-) {
+): FieldCompletionContext | null {
   const query = model.getValue();
   const offset = model.getOffsetAt(position);
   const fromMatch = /\bFROM\s+([A-Z0-9_./-]+)/i.exec(query);
 
   if (!fromMatch?.[1]) {
-    return false;
+    return null;
   }
 
   const beforeCursor = query.slice(0, offset);
@@ -453,6 +577,7 @@ function getFieldCompletionContext(
   if (offset < fromMatch.index) {
     return {
       range: getWordRange(model, position),
+      token: model.getWordUntilPosition(position).word,
     };
   }
 
@@ -466,11 +591,19 @@ function getFieldCompletionContext(
   }
 
   const token = fieldContextMatch[1] ?? "";
-  const wordRange = getWordRange(model, position);
+  const tokenStartOffset = offset - token.length;
+  const tokenStart = model.getPositionAt(tokenStartOffset);
+  const tokenEnd = model.getPositionAt(offset);
 
   return {
+    token,
     range: token
-      ? wordRange
+      ? {
+          startLineNumber: tokenStart.lineNumber,
+          endLineNumber: tokenEnd.lineNumber,
+          startColumn: tokenStart.column,
+          endColumn: tokenEnd.column,
+        }
       : {
           startLineNumber: position.lineNumber,
           endLineNumber: position.lineNumber,
@@ -516,6 +649,49 @@ function fieldCompletionItems(
         .join(" | "),
       range,
     }));
+}
+
+function joinedFieldCompletionItems(
+  tableReferences: QueryTableReference[],
+  fieldCache: Map<string, SapSqlwbField[]>,
+  range: monaco.IRange,
+  token: string,
+): monaco.languages.CompletionItem[] {
+  const normalizedToken = token.toLowerCase();
+
+  return tableReferences.flatMap((tableReference) => {
+    const fields = fieldCache.get(tableReference.tableName) ?? [];
+
+    return fields
+      .filter((field) => field.FieldName)
+      .sort((a, b) => Number(a.Position ?? 0) - Number(b.Position ?? 0))
+      .map((field) => {
+        const fieldName = field.FieldName ?? "";
+        const insertText = `${tableReference.alias}~${fieldName}`;
+
+        return {
+          label: insertText,
+          kind: monaco.languages.CompletionItemKind.Field,
+          insertText,
+          detail: [
+            tableReference.tableName,
+            field.AbapType,
+            field.Element,
+            field.Label,
+          ]
+            .filter(Boolean)
+            .join(" | "),
+          range,
+        };
+      })
+      .filter((item) => {
+        if (!normalizedToken) {
+          return true;
+        }
+
+        return item.insertText.toLowerCase().startsWith(normalizedToken);
+      });
+  });
 }
 
 function stripTableQualifier(fieldName: string) {
@@ -574,6 +750,14 @@ function addDelimitedFieldErrors({
   }, 0);
 }
 
+function getProjectionAliases(projection: string) {
+  return projection
+    .split(",")
+    .map((part) => /\s+AS\s+([A-Z_][A-Z0-9_]*)\s*$/i.exec(part.trim())?.[1])
+    .filter((alias): alias is string => Boolean(alias))
+    .map((alias) => alias.toUpperCase());
+}
+
 function getClauseSlice(query: string, clausePattern: RegExp, stopPattern: RegExp) {
   const clauseMatch = clausePattern.exec(query);
 
@@ -596,6 +780,10 @@ function getFieldValidationErrors(
   query: string,
   assistState: CompletionAssistState,
 ) {
+  if (hasJoin(query)) {
+    return [] as SemanticValidationError[];
+  }
+
   const tableName = getPrimaryTableName(query);
   const fields = tableName ? assistState.fieldCache.get(tableName) : undefined;
 
@@ -610,6 +798,7 @@ function getFieldValidationErrors(
   );
   const errors: SemanticValidationError[] = [];
   const fromMatch = /\bFROM\b/i.exec(query);
+  const projectionAliases = new Set<string>();
 
   if (fromMatch) {
     const projectionStart = "SELECT".length;
@@ -617,6 +806,9 @@ function getFieldValidationErrors(
     const projectionLeadingWhitespace =
       query.slice(projectionStart, fromMatch.index).length -
       query.slice(projectionStart, fromMatch.index).trimStart().length;
+    getProjectionAliases(projection).forEach((alias) => {
+      projectionAliases.add(alias);
+    });
 
     if (
       projection &&
@@ -642,11 +834,16 @@ function getFieldValidationErrors(
     /\b(UP\s+TO|LIMIT)\b/i,
   );
   if (orderByClause) {
+    const validOrderByNames = new Set([
+      ...validFieldNames,
+      ...projectionAliases,
+    ]);
+
     addDelimitedFieldErrors({
       errors,
       clause: orderByClause.text,
       clauseStartIndex: orderByClause.startIndex,
-      validFieldNames,
+      validFieldNames: validOrderByNames,
       tableName,
     });
   }
@@ -711,6 +908,28 @@ async function ensureFieldsForCurrentTable(
   assistState.fieldCache.set(tableName, await sqlAssistService.getFields(tableName));
 }
 
+async function ensureFieldsForJoinTables(
+  tableReferences: QueryTableReference[],
+  assistState: CompletionAssistState,
+  context: EditorContext,
+) {
+  await Promise.all(
+    tableReferences.map(async (tableReference) => {
+      if (
+        assistState.fieldCache.has(tableReference.tableName) ||
+        !isKnownTableName(tableReference.tableName, context)
+      ) {
+        return;
+      }
+
+      assistState.fieldCache.set(
+        tableReference.tableName,
+        await sqlAssistService.getFields(tableReference.tableName),
+      );
+    }),
+  );
+}
+
 async function buildDynamicCompletionItems(
   model: monaco.editor.ITextModel,
   position: monaco.Position,
@@ -740,11 +959,50 @@ async function buildDynamicCompletionItems(
   }
 
   const tableName = getPrimaryTableName(model.getValue());
+  const query = model.getValue();
 
   if (!tableName) {
     return {
       suggestions: [],
       exclusive: false,
+    };
+  }
+
+  const joinTableReferences = getJoinTableReferences(query);
+
+  if (joinTableReferences.length > 1) {
+    const fieldContext =
+      getJoinFieldCompletionContext(model, position) ??
+      getFieldCompletionContext(model, position);
+
+    if (!fieldContext) {
+      return {
+        suggestions: [],
+        exclusive: false,
+      };
+    }
+
+    if (
+      joinTableReferences.some(
+        (tableReference) => !isKnownTableName(tableReference.tableName, context),
+      )
+    ) {
+      return {
+        suggestions: [],
+        exclusive: true,
+      };
+    }
+
+    await ensureFieldsForJoinTables(joinTableReferences, assistState, context);
+
+    return {
+      suggestions: joinedFieldCompletionItems(
+        joinTableReferences,
+        assistState.fieldCache,
+        fieldContext.range,
+        fieldContext.token,
+      ),
+      exclusive: true,
     };
   }
 
@@ -830,7 +1088,7 @@ export function SqlEditor({
 
     completionProviderRef.current =
       monaco.languages.registerCompletionItemProvider(language, {
-        triggerCharacters: [" ", ".", "_", "'"],
+        triggerCharacters: [" ", ".", "_", "'", "~"],
         provideCompletionItems: async (model, position) => {
           const dynamicResult = await buildDynamicCompletionItems(
             model,
@@ -988,6 +1246,27 @@ export function SqlEditor({
       if (activeModel) {
         updateMarkers(activeModel);
         void updateDynamicMarkers(activeModel);
+
+        const activePosition = editorRef.current?.getPosition();
+        if (
+          activePosition &&
+          (shouldAutoTriggerJoinFieldSuggest(
+            activeModel,
+            activePosition,
+            contextRef.current,
+          ) ||
+            shouldAutoTriggerClauseFieldSuggest(
+              activeModel,
+              activePosition,
+              contextRef.current,
+            ))
+        ) {
+          editorRef.current?.trigger(
+            "open-sql-workbench",
+            "editor.action.triggerSuggest",
+            {},
+          );
+        }
       }
     });
 

@@ -4,6 +4,7 @@ import type {
   WorkbenchDebugResponse,
   WorkbenchEntity,
   WorkbenchMetric,
+  WorkbenchPageInfo,
   WorkbenchRow,
   WorkbenchSnapshot,
   WorkbenchTemplate,
@@ -240,6 +241,7 @@ type WorkbenchQueryExecution = {
   debugResponses: WorkbenchDebugResponse[];
   queryPath: string;
   isCountQuery: boolean;
+  pageInfo: WorkbenchPageInfo;
 };
 
 type EntityNameResolver = (entityName: string) => string;
@@ -266,16 +268,19 @@ function buildQueryPath(
 }
 
 function buildRunQueryPath(queryText: string, page = 1) {
-  const searchParams = new URLSearchParams({
-    ProfileId: `'${queryProfileId}'`,
-    SqlText: `'${queryText}'`,
-    Page: String(page),
-  });
+  const encodeODataFunctionString = (value: string) =>
+    encodeURIComponent(value).replace(/'/g, "%27");
+  const sqlText = queryText.replace(/\s+/g, " ").trim();
+  const queryParts = [
+    `ProfileId='${encodeODataFunctionString(queryProfileId)}'`,
+    `SqlText='${encodeODataFunctionString(sqlText)}'`,
+    `Page=${page}`,
+  ];
 
-  return `${servicePath}/RunQuery?${searchParams.toString()}`;
+  return `${servicePath}/RunQuery?${queryParts.join("&")}`;
 }
 
-function buildPreviewTablePath(objectName: string, maxRows = 20, page = 1) {
+function buildPreviewTablePath(objectName: string, maxRows = 100, page = 1) {
   const searchParams = new URLSearchParams({
     ProfileId: `'${queryProfileId}'`,
     ObjectName: `'${escapeODataStringLiteral(objectName)}'`,
@@ -413,7 +418,10 @@ function parseWorkbenchQuery(
     queryParams.$filter = parseSimpleFilterClause(whereMatch[1].trim());
   }
 
-  const isCountQuery = upperQuery.includes("COUNT(*)");
+  const isCountQuery =
+    /^\s*SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM\s+[A-Z0-9_./-]+(?:\s*)$/i.test(
+      queryText,
+    ) && !/\b(?:GROUP\s+BY|JOIN)\b/i.test(upperQuery);
 
   return {
     entitySetName,
@@ -446,6 +454,41 @@ function normalizeBoolean(value: unknown) {
   }
 
   return false;
+}
+
+function buildPageInfo(
+  result: SapRunQueryResult,
+  fallbackRowsLength: number,
+): WorkbenchPageInfo {
+  const page = Math.max(1, normalizeNumber(result.Page, 1));
+  const pageSize = Math.max(
+    0,
+    normalizeNumber(result.PageSize, fallbackRowsLength),
+  );
+  const returnedRows = Math.max(
+    0,
+    normalizeNumber(result.ReturnedRows, fallbackRowsLength),
+  );
+  const totalRows = Math.max(
+    0,
+    normalizeNumber(result.TotalRows ?? result.RowCount, fallbackRowsLength),
+  );
+  const totalPages = Math.max(
+    totalRows > 0 ? 1 : 0,
+    normalizeNumber(result.TotalPages, pageSize > 0 ? Math.ceil(totalRows / pageSize) : 0),
+  );
+
+  return {
+    resultId: result.ResultId?.trim(),
+    rowCount: Math.max(0, normalizeNumber(result.RowCount, totalRows)),
+    returnedRows,
+    totalRows,
+    maxRows: Math.max(0, normalizeNumber(result.MaxRows, pageSize)),
+    page,
+    pageSize,
+    totalPages,
+    truncated: normalizeBoolean(result.Truncated),
+  };
 }
 
 function getODataResults<T>(payload: SapODataEnvelope<T>) {
@@ -694,13 +737,14 @@ async function executeLiveRunQuery(
   queryText: string,
   fallbackEntity: string,
   availableEntityNames: string[],
+  pageNumber = 1,
 ): Promise<WorkbenchQueryExecution> {
   const queryPlan = parseWorkbenchQuery(
     queryText,
     fallbackEntity,
     createEntityNameResolver(availableEntityNames),
   );
-  const queryPath = buildRunQueryPath(queryText);
+  const queryPath = buildRunQueryPath(queryText, pageNumber);
 
   const result = unwrapRunQueryResult(
     await sapClient.request<SapRunQueryEnvelope>(queryPath, { method: "POST" }),
@@ -754,26 +798,7 @@ async function executeLiveRunQuery(
   );
   const debugResponses = [columnDebugResponse, ...chunkDebugResponses];
   const columns = normalizeColumns(sapColumns, rows);
-
-  if (queryPlan.isCountQuery) {
-    const countValue =
-      Number(result.RowCount ?? result.TotalRows ?? rows.length) || 0;
-    const countRows = [
-      {
-        RecordCount: countValue,
-        EntitySet: queryPlan.entitySetName,
-      },
-    ];
-
-    return {
-      entitySetName: queryPlan.entitySetName,
-      columns: buildFallbackColumns(countRows),
-      rows: countRows,
-      debugResponses,
-      queryPath,
-      isCountQuery: true,
-    };
-  }
+  const pageInfo = buildPageInfo(result, rows.length);
 
   return {
     entitySetName: result.ObjectName || queryPlan.entitySetName,
@@ -781,13 +806,14 @@ async function executeLiveRunQuery(
     rows,
     debugResponses,
     queryPath,
-    isCountQuery: false,
+    isCountQuery: queryPlan.isCountQuery,
+    pageInfo,
   };
 }
 
 async function executeLivePreviewTable(
   objectName: string,
-  maxRows = 20,
+  maxRows = 100,
   pageNumber = 1,
 ): Promise<WorkbenchQueryExecution> {
   const queryPath = buildPreviewTablePath(objectName, maxRows, pageNumber);
@@ -831,6 +857,7 @@ async function executeLivePreviewTable(
     page,
   );
   const debugResponses = [columnDebugResponse, ...chunkDebugResponses];
+  const pageInfo = buildPageInfo(result, rows.length);
 
   return {
     entitySetName: result.ObjectName || objectName,
@@ -839,6 +866,7 @@ async function executeLivePreviewTable(
     debugResponses,
     queryPath,
     isCountQuery: false,
+    pageInfo,
   };
 }
 
@@ -877,6 +905,16 @@ export async function executeWorkbenchQuery(
       debugResponses: [],
       queryPath: buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
       isCountQuery: true,
+      pageInfo: {
+        rowCount: rows.length,
+        returnedRows: countRows.length,
+        totalRows: rows.length,
+        maxRows: rows.length,
+        page: 1,
+        pageSize: countRows.length,
+        totalPages: 1,
+        truncated: false,
+      },
     };
   }
 
@@ -892,6 +930,16 @@ export async function executeWorkbenchQuery(
     debugResponses: [],
     queryPath: buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
     isCountQuery: false,
+    pageInfo: {
+      rowCount: normalizedRows.length,
+      returnedRows: normalizedRows.length,
+      totalRows: normalizedRows.length,
+      maxRows: normalizedRows.length,
+      page: normalizedRows.length > 0 ? 1 : 0,
+      pageSize: normalizedRows.length,
+      totalPages: normalizedRows.length > 0 ? 1 : 0,
+      truncated: false,
+    },
   };
 }
 
@@ -988,11 +1036,12 @@ export const workbenchService = {
     queryText: string,
     fallbackEntity: string,
     availableEntityNames: string[],
+    page = 1,
   ) => {
-    return executeLiveRunQuery(queryText, fallbackEntity, availableEntityNames);
+    return executeLiveRunQuery(queryText, fallbackEntity, availableEntityNames, page);
   },
 
-  previewTable: async (objectName: string, maxRows = 20) => {
-    return executeLivePreviewTable(objectName, maxRows);
+  previewTable: async (objectName: string, maxRows = 100, page = 1) => {
+    return executeLivePreviewTable(objectName, maxRows, page);
   },
 };

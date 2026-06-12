@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
+  type UIEvent,
   type PointerEvent,
 } from "react";
 import {
@@ -25,13 +27,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   TableBody,
   TableCell,
   TableHead,
@@ -42,6 +37,7 @@ import { parseSapDate } from "@/lib/sapParser";
 import type {
   WorkbenchColumn,
   WorkbenchDebugResponse,
+  WorkbenchPageInfo,
   WorkbenchRow,
 } from "@/types/workbench";
 
@@ -49,8 +45,10 @@ type ResultsTableProps = {
   entityName: string;
   columns: WorkbenchColumn[];
   debugResponses: WorkbenchDebugResponse[];
+  pageInfo: WorkbenchPageInfo;
   rows: WorkbenchRow[];
   onClose?: () => void;
+  onPageChange?: (page: number) => void;
 };
 
 type HeaderDragState = {
@@ -58,6 +56,9 @@ type HeaderDragState = {
   startX: number;
   scrollLeft: number;
 };
+
+const estimatedResultRowHeight = 37;
+const resultRowOverscan = 8;
 
 function formatCellValue(value: WorkbenchRow[string]) {
   if (typeof value === "boolean") {
@@ -130,16 +131,18 @@ export function ResultsTable({
   entityName,
   columns,
   debugResponses,
+  pageInfo,
   rows,
   onClose,
+  onPageChange,
 }: ResultsTableProps) {
   const [searchText, setSearchText] = useState("");
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [selectedDebugIndex, setSelectedDebugIndex] = useState(0);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
   const [isHeaderDragging, setIsHeaderDragging] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(480);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const headerDragRef = useRef<HeaderDragState | null>(null);
   const visibleColumns = useMemo(
@@ -161,23 +164,50 @@ export function ResultsTable({
       ),
     );
   }, [rows, searchText, visibleColumns]);
-  const pageCount = Math.max(1, Math.ceil(visibleRows.length / pageSize));
-  const currentPageIndex = Math.min(pageIndex, pageCount - 1);
-  const pageStart = currentPageIndex * pageSize;
-  const pageEnd = Math.min(pageStart + pageSize, visibleRows.length);
-  const pageRows = visibleRows.slice(pageStart, pageEnd);
-  const canGoPrevious = currentPageIndex > 0;
-  const canGoNext = currentPageIndex < pageCount - 1;
+  const currentPage = Math.max(0, pageInfo.page);
+  const totalPages = Math.max(0, pageInfo.totalPages);
+  const pageSize = Math.max(0, pageInfo.pageSize);
+  const returnedRows = Math.max(rows.length, pageInfo.returnedRows);
+  const totalRows = Math.max(rows.length, pageInfo.totalRows);
+  const pageStart =
+    currentPage > 0 && pageSize > 0 && returnedRows > 0
+      ? (currentPage - 1) * pageSize + 1
+      : rows.length > 0
+        ? 1
+        : 0;
+  const pageEnd =
+    pageStart > 0 ? pageStart + Math.max(visibleRows.length, returnedRows) - 1 : 0;
+  const pageRows = visibleRows;
+  const virtualStartIndex = Math.max(
+    0,
+    Math.floor(scrollTop / estimatedResultRowHeight) - resultRowOverscan,
+  );
+  const virtualEndIndex = Math.min(
+    pageRows.length,
+    Math.ceil((scrollTop + viewportHeight) / estimatedResultRowHeight) +
+      resultRowOverscan,
+  );
+  const virtualRows = pageRows.slice(virtualStartIndex, virtualEndIndex);
+  const topSpacerHeight = virtualStartIndex * estimatedResultRowHeight;
+  const bottomSpacerHeight =
+    (pageRows.length - virtualEndIndex) * estimatedResultRowHeight;
+  const canGoPrevious = Boolean(onPageChange && currentPage > 1);
+  const canGoNext = Boolean(
+    onPageChange &&
+      currentPage > 0 &&
+      totalPages > 0 &&
+      currentPage < totalPages,
+  );
   const tableMinWidth = Math.max(visibleColumns.length * 168, 720);
 
   function handleSearchChange(value: string) {
     setSearchText(value);
-    setPageIndex(0);
+    setScrollTop(0);
+    tableScrollRef.current?.scrollTo({ top: 0 });
   }
 
-  function handlePageSizeChange(value: string) {
-    setPageSize(Number(value));
-    setPageIndex(0);
+  function handleTableScroll(event: UIEvent<HTMLDivElement>) {
+    setScrollTop(event.currentTarget.scrollTop);
   }
 
   function handleHeaderPointerDown(
@@ -261,6 +291,25 @@ export function ResultsTable({
 
   const selectedDebugResponse = debugResponses[selectedDebugIndex];
 
+  useEffect(() => {
+    const scrollContainer = tableScrollRef.current;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    function updateViewportHeight() {
+      setViewportHeight(scrollContainer?.clientHeight ?? 480);
+    }
+
+    updateViewportHeight();
+
+    const resizeObserver = new ResizeObserver(updateViewportHeight);
+    resizeObserver.observe(scrollContainer);
+
+    return () => resizeObserver.disconnect();
+  }, [visibleRows.length]);
+
   return (
     <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
       <CardHeader className="border-b border-border px-3 py-2">
@@ -268,7 +317,8 @@ export function ResultsTable({
           <div>
             <CardTitle className="text-base text-foreground">Results</CardTitle>
             <CardDescription className="text-xs">
-              {entityName} | {visibleRows.length} of {rows.length} rows
+              {entityName} | Page {currentPage || "-"} of {totalPages || "-"} |{" "}
+              {returnedRows} of {totalRows} rows
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -347,6 +397,7 @@ export function ResultsTable({
           <div
             ref={tableScrollRef}
             className="h-full min-w-0 overflow-auto bg-white"
+            onScroll={handleTableScroll}
           >
             <table
               className="w-full table-fixed caption-bottom text-sm"
@@ -390,9 +441,18 @@ export function ResultsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pageRows.map((row, rowIndex) => (
+                {topSpacerHeight > 0 ? (
+                  <TableRow aria-hidden="true" className="border-0">
+                    <TableCell
+                      colSpan={visibleColumns.length}
+                      className="p-0"
+                      style={{ height: `${topSpacerHeight}px` }}
+                    />
+                  </TableRow>
+                ) : null}
+                {virtualRows.map((row, rowIndex) => (
                   <TableRow
-                    key={`${entityName}-${pageStart + rowIndex}`}
+                    key={`${entityName}-${currentPage}-${virtualStartIndex + rowIndex}`}
                     className="border-border hover:bg-accent/40"
                   >
                     {visibleColumns.map((column) => (
@@ -406,6 +466,15 @@ export function ResultsTable({
                     ))}
                   </TableRow>
                 ))}
+                {bottomSpacerHeight > 0 ? (
+                  <TableRow aria-hidden="true" className="border-0">
+                    <TableCell
+                      colSpan={visibleColumns.length}
+                      className="p-0"
+                      style={{ height: `${bottomSpacerHeight}px` }}
+                    />
+                  </TableRow>
+                ) : null}
               </TableBody>
             </table>
           </div>
@@ -415,35 +484,20 @@ export function ResultsTable({
         <div>
           {visibleRows.length === 0
             ? "No rows"
-            : `Showing ${pageStart + 1}-${pageEnd} of ${visibleRows.length} rows`}
+            : searchText.trim()
+              ? `Filtered ${visibleRows.length} of ${rows.length} rows on page ${currentPage || "-"}`
+              : `Showing ${pageStart}-${pageEnd} of ${totalRows} rows`}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs" htmlFor="result-page-size">
-            Rows per page
-          </label>
-          <Select
-            value={String(pageSize)}
-            onValueChange={handlePageSizeChange}
-          >
-            <SelectTrigger id="result-page-size" className="w-20">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[10, 25, 50, 100].map((size) => (
-                <SelectItem key={size} value={String(size)}>
-                  {size}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <div className="text-xs">
-            Page {currentPageIndex + 1} of {pageCount}
+            Page {currentPage || "-"} of {totalPages || "-"} | Page size{" "}
+            {pageSize || "-"}
           </div>
           <div className="flex items-center gap-1">
             <button
               type="button"
               disabled={!canGoPrevious}
-              onClick={() => setPageIndex(0)}
+              onClick={() => onPageChange?.(1)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="First page"
             >
@@ -452,7 +506,7 @@ export function ResultsTable({
             <button
               type="button"
               disabled={!canGoPrevious}
-              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+              onClick={() => onPageChange?.(currentPage - 1)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="Previous page"
             >
@@ -461,9 +515,7 @@ export function ResultsTable({
             <button
               type="button"
               disabled={!canGoNext}
-              onClick={() =>
-                setPageIndex((current) => Math.min(pageCount - 1, current + 1))
-              }
+              onClick={() => onPageChange?.(currentPage + 1)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="Next page"
             >
@@ -472,7 +524,7 @@ export function ResultsTable({
             <button
               type="button"
               disabled={!canGoNext}
-              onClick={() => setPageIndex(pageCount - 1)}
+              onClick={() => onPageChange?.(totalPages)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="Last page"
             >

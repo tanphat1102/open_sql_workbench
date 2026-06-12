@@ -84,30 +84,23 @@ export function EntityBrowser({
                 <div
                   key={entity.name}
                   className={cn(
-                    "flex items-start gap-2 rounded-md border p-2 transition",
+                    "flex min-h-11 items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-border hover:bg-accent",
                     isSelected
-                      ? "border-primary/35 bg-accent text-foreground hover:bg-accent"
-                      : "border-border bg-white text-foreground hover:bg-accent hover:text-foreground",
+                      ? "bg-accent text-foreground"
+                      : "bg-transparent text-foreground hover:text-foreground",
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => onSelectEntity(entity.name)}
-                    className="min-w-0 flex-1 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="truncate font-medium">{entity.name}</div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {entity.recordCount > 0
-                          ? entity.recordCount
-                          : (entity.tags[1] ?? "Object")}
-                      </span>
-                    </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {entity.keyFields.length
-                        ? `Keys: ${entity.keyFields.join(", ")}`
-                        : entity.description}
-                    </div>
+                    <div className="truncate font-medium">{entity.name}</div>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {entity.recordCount > 0
+                        ? entity.recordCount
+                        : (entity.tags[1] ?? "Object")}
+                    </span>
                   </button>
                   {onPreviewEntity ? (
                     <button

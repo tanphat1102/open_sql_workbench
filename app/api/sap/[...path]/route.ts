@@ -127,8 +127,9 @@ async function handleProxy(
   try {
     const { path } = await params;
     const targetPath = path.join("/");
-    const { searchParams } = new URL(req.url);
-    const queryString = searchParams.toString();
+    const queryStartIndex = req.url.indexOf("?");
+    const queryString =
+      queryStartIndex >= 0 ? req.url.slice(queryStartIndex + 1) : "";
     const sapBaseUrl = process.env.SAP_BASE_URL || "";
     const fullTargetUrl = buildTargetUrl(sapBaseUrl, targetPath, queryString);
     const sapClient = getSapClient(req);
