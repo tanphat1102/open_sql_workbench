@@ -84,7 +84,7 @@ const sqlKeywords = [
   "IS NOT NULL",
   "INNER JOIN",
   "LEFT OUTER JOIN",
-  "RIGHT OUTER JOIN",
+  "LEFT JOIN",
   "ON",
   "LIMIT",
   "CLIENT SPECIFIED",
@@ -137,7 +137,7 @@ function configureSqlLanguage() {
     tokenizer: {
       root: [
         [
-          /\b(SELECT|TOP|FROM|AS|WHERE|AND|OR|NOT|ORDER|BY|GROUP|HAVING|UP|TO|ROWS|COUNT|SUM|AVG|MIN|MAX|DISTINCT|ASC|DESC|LIKE|BETWEEN|IN|IS|NULL|INNER|LEFT|RIGHT|OUTER|JOIN|ON|LIMIT|CLIENT|SPECIFIED|BYPASSING|BUFFER|INTO|TABLE|ALL|ENTRIES|DESCRIBE|KEYS|FOR|SHOW|LAST|SYNC)\b/,
+          /\b(SELECT|TOP|FROM|AS|WHERE|AND|OR|NOT|ORDER|BY|GROUP|HAVING|UP|TO|ROWS|COUNT|SUM|AVG|MIN|MAX|DISTINCT|ASC|DESC|LIKE|BETWEEN|IN|IS|NULL|INNER|LEFT|OUTER|JOIN|ON|LIMIT|CLIENT|SPECIFIED|BYPASSING|BUFFER|INTO|TABLE|ALL|ENTRIES|DESCRIBE|KEYS|FOR|SHOW|LAST|SYNC)\b/,
           "keyword",
         ],
         [/'(?:[^']|'')*'/, "string"],
@@ -251,6 +251,45 @@ function buildCompletionItems(
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
       detail: "Select specific fields",
+      range,
+    },
+    {
+      label: "INNER JOIN query",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      insertText:
+        "SELECT ${1:a~field}, ${2:b~field}\nFROM ${3:table_a} AS a\nINNER JOIN ${4:table_b} AS b ON a~${5:key} = b~${5:key}\nORDER BY ${1:a~field}",
+      insertTextRules:
+        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      detail: "Contract-supported INNER JOIN query with aliases",
+      range,
+    },
+    {
+      label: "LEFT OUTER JOIN query",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      insertText:
+        "SELECT ${1:a~field}, ${2:b~field}\nFROM ${3:table_a} AS a\nLEFT OUTER JOIN ${4:table_b} AS b ON a~${5:key} = b~${5:key}\nORDER BY ${1:a~field}",
+      insertTextRules:
+        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      detail: "Contract-supported LEFT OUTER JOIN query with aliases",
+      range,
+    },
+    {
+      label: "LEFT JOIN query",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      insertText:
+        "SELECT ${1:a~field}, ${2:b~field}\nFROM ${3:table_a} AS a\nLEFT JOIN ${4:table_b} AS b ON a~${5:key} = b~${5:key}\nORDER BY ${1:a~field}",
+      insertTextRules:
+        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      detail: "LEFT JOIN alias form accepted by backend",
+      range,
+    },
+    {
+      label: "GROUP BY aggregate",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      insertText: `SELECT \${1:${firstKeyField}}, COUNT(*) AS \${2:row_count}\nFROM \${3:${selectedEntityName}}\nGROUP BY \${1:${firstKeyField}}\nORDER BY \${2:row_count} DESC`,
+      insertTextRules:
+        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      detail: "GROUP BY with aggregate alias",
       range,
     },
     {
@@ -395,7 +434,7 @@ function getTableCompletionContext(
   const offset = model.getOffsetAt(position);
   const beforeCursor = model.getValue().slice(0, offset);
   const match =
-    /\b(?:FROM|INNER\s+JOIN)\s+([A-Z0-9_./-]*)$/i.exec(beforeCursor);
+    /\b(?:FROM|INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)\s+([A-Z0-9_./-]*)$/i.exec(beforeCursor);
 
   if (!match) {
     return null;
@@ -463,7 +502,7 @@ function getJoinTableReferences(query: string): QueryTableReference[] {
   }
 
   for (const joinMatch of query.matchAll(
-    /\bINNER\s+JOIN\s+([A-Z0-9_./-]+)\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
+    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)\s+([A-Z0-9_./-]+)\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
   )) {
     if (joinMatch[1] && joinMatch[2]) {
       references.push({

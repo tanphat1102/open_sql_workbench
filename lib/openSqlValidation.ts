@@ -122,7 +122,7 @@ function getJoinAliasNames(query: string) {
   }
 
   for (const joinMatch of query.matchAll(
-    /\bINNER\s+JOIN\s+[A-Z0-9_./-]+\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
+    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)\s+[A-Z0-9_./-]+\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
   )) {
     if (joinMatch[1]) {
       aliases.add(joinMatch[1].toUpperCase());
@@ -151,16 +151,18 @@ function validateJoinSql(
     return errors;
   }
 
-  for (const joinMatch of query.matchAll(/\b(?:[A-Z]+\s+)?JOIN\b/gi)) {
+  for (const joinMatch of query.matchAll(
+    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN|FULL(?:\s+OUTER)?\s+JOIN|CROSS\s+JOIN|JOIN)\b/gi,
+  )) {
     const joinText = joinMatch[0];
 
-    if (/^INNER\s+JOIN$/i.test(joinText)) {
+    if (/^(INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)$/i.test(joinText)) {
       continue;
     }
 
     const joinIndex = joinMatch.index ?? findKeywordIndex(query, "JOIN");
     errors.push({
-      message: "JOIN supports INNER JOIN only.",
+      message: "JOIN supports INNER JOIN, LEFT JOIN, and LEFT OUTER JOIN only.",
       startColumn: Math.max(1, joinIndex + 1),
       endColumn: Math.max(2, joinIndex + joinText.length + 1),
     });
@@ -178,7 +180,7 @@ function validateJoinSql(
   }
 
   for (const innerJoinTableMatch of query.matchAll(
-    /\bINNER\s+JOIN\s+([A-Z0-9_./-]+)(?:\s+AS\s+([A-Z_][A-Z0-9_]*))?/gi,
+    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)\s+([A-Z0-9_./-]+)(?:\s+AS\s+([A-Z_][A-Z0-9_]*))?/gi,
   )) {
     if (!innerJoinTableMatch[1]) {
       continue;
@@ -209,7 +211,7 @@ function validateJoinSql(
   if (!/\bON\b/i.test(query)) {
     const joinIndex = findKeywordIndex(query, "JOIN");
     errors.push({
-      message: "INNER JOIN requires an ON condition.",
+      message: "JOIN requires an ON condition.",
       startColumn: Math.max(1, joinIndex + 1),
       endColumn: Math.max(2, query.length + 1),
     });
