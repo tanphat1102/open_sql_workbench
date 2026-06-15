@@ -107,6 +107,7 @@ function isForwardableHeader(key: string) {
     "transfer-encoding",
     "connection",
     "keep-alive",
+    "www-authenticate",
     "proxy-authenticate",
     "proxy-authorization",
     "te",
@@ -118,6 +119,42 @@ function isForwardableHeader(key: string) {
     "content-length",
     "content-encoding",
   ].includes(key);
+}
+
+function getCookieNames(cookieHeader: string) {
+  return cookieHeader
+    .split(";")
+    .map((cookie) => cookie.trim().split("=")[0])
+    .filter(Boolean);
+}
+
+function clearCookie(response: NextResponse, name: string) {
+  response.cookies.set(name, "", {
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+function clearSapSessionCookies(
+  response: NextResponse,
+  clientCookieHeader: string,
+  storedSapCookieHeader: string,
+) {
+  const cookieNames = new Set([
+    "OSWB_SAP_CLIENT",
+    "OSWB_SAP_COOKIE",
+    "OSWB_SAP_USER",
+    ...getCookieNames(clientCookieHeader).filter(
+      (name) =>
+        name.startsWith("SAP_") ||
+        name.startsWith("sap-") ||
+        name.startsWith("MYSAPSSO2") ||
+        name.startsWith("SAPSSO2"),
+    ),
+    ...getCookieNames(storedSapCookieHeader),
+  ]);
+
+  cookieNames.forEach((name) => clearCookie(response, name));
 }
 
 async function handleProxy(
@@ -138,8 +175,8 @@ async function handleProxy(
 
     // 1. Read the SAP cookies sent by the developer's browser.
     const clientCookies = req.headers.get("cookie") || "";
-    const sapCookies =
-      getStoredSapCookieHeader(req) || getSapCookieHeader(clientCookies);
+    const storedSapCookies = getStoredSapCookieHeader(req);
+    const sapCookies = storedSapCookies || getSapCookieHeader(clientCookies);
 
     // Reject unauthenticated requests before proxying to SAP.
     if (!sapCookies) {
@@ -244,6 +281,10 @@ async function handleProxy(
       headers: forwardedHeaders,
     });
 
+    if (sapResponse.status === 401) {
+      clearSapSessionCookies(response, clientCookies, storedSapCookies);
+    }
+
     // If SAP set cookies, forward them individually
     const sapNewCookies =
       typeof sapResponse.headers.getSetCookie === "function"
@@ -284,11 +325,14 @@ async function handleProxy(
               "transfer-encoding",
               "connection",
               "keep-alive",
+              "www-authenticate",
               "proxy-authenticate",
               "proxy-authorization",
               "te",
               "trailer",
               "upgrade",
+              "content-length",
+              "content-encoding",
             ].includes(key)
           )
             return;
@@ -302,6 +346,15 @@ async function handleProxy(
           status: axiosError.response.status || 502,
           headers: errHeaders,
         });
+
+        if (axiosError.response.status === 401) {
+          const clientCookies = req.headers.get("cookie") || "";
+          clearSapSessionCookies(
+            resp,
+            clientCookies,
+            getStoredSapCookieHeader(req),
+          );
+        }
 
         const setCookies =
           (axiosError.response.headers?.["set-cookie"] as string[]) || [];
