@@ -9,6 +9,7 @@ import type {
   WorkbenchSnapshot,
   WorkbenchTemplate,
 } from "@/types/workbench";
+import { jsonrepair } from "jsonrepair";
 import { sapClient } from "@/services/sapClient";
 import { sqlAssistService } from "@/services/sqlAssistService";
 import type {
@@ -244,6 +245,15 @@ type WorkbenchQueryExecution = {
   pageInfo: WorkbenchPageInfo;
 };
 
+type WorkbenchQueryProgress = WorkbenchQueryExecution & {
+  isFinal: boolean;
+  loadedChunkCount: number;
+};
+
+type WorkbenchQueryOptions = {
+  onProgress?: (progress: WorkbenchQueryProgress) => void;
+};
+
 type EntityNameResolver = (entityName: string) => string;
 
 function buildEntitySetPath(entitySetName: string) {
@@ -314,13 +324,18 @@ function buildFilteredSetPath(
   return `${servicePath}/${entitySetName}?${searchParams.toString()}`;
 }
 
-function buildColumnSetPath(resultId: string) {
+function buildColumnSetPath(
+  resultId: string,
+  options: { top: number; skip: number },
+) {
   return buildFilteredSetPath(
     "SqlwbColumnSet",
     `ResultId eq '${escapeODataStringLiteral(resultId)}'`,
     {
       $select:
         "ResultId,Position,FieldName,JsonKey,Element,AbapType,Length,Decimals,IsKey,Label",
+      $top: options.top,
+      $skip: options.skip,
     },
   );
 }
@@ -639,19 +654,81 @@ function parseRowsJson(rowsJson: string): WorkbenchRow[] {
     .map((row) => stripMetadataFields(row));
 }
 
-async function loadResultColumns(resultId: string) {
+function parsePartialRowsJson(rowsJson: string): WorkbenchRow[] | null {
+  if (!rowsJson.trim()) {
+    return [];
+  }
+
+  try {
+    return parseRowsJson(rowsJson);
+  } catch {
+    try {
+      const repaired = jsonrepair(rowsJson);
+      return parseRowsJson(repaired);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function joinChunkPayloads(chunks: SapSqlwbPageChunk[]) {
+  return chunks
+    .slice()
+    .sort((a, b) => normalizeNumber(a.ChunkNo) - normalizeNumber(b.ChunkNo))
+    .map((chunk) => chunk.PayloadPart ?? "")
+    .join("");
+}
+
+async function loadResultColumnBatch(
+  resultId: string,
+  options: { top: number; skip: number },
+) {
   const response = await sapClient.requestRawJson<
     SapODataEnvelope<SapSqlwbColumn>
-  >(buildColumnSetPath(resultId));
+  >(buildColumnSetPath(resultId, options));
   const columns = getODataResults(response.data);
 
   return {
     columns,
     debugResponse: createDebugResponse({
-      label: "SqlwbColumnSet",
+      label: `SqlwbColumnSet skip ${options.skip}`,
       summary: `Column rows: ${columns.length}`,
       response,
     }),
+  };
+}
+
+async function loadResultColumns(resultId: string) {
+  const columnBatchSize = 100;
+  const maxColumnBatches = 100;
+  const columns: SapSqlwbColumn[] = [];
+  const debugResponses: WorkbenchDebugResponse[] = [];
+
+  for (let batchIndex = 0; batchIndex < maxColumnBatches; batchIndex += 1) {
+    const { columns: batch, debugResponse } = await loadResultColumnBatch(
+      resultId,
+      {
+        top: columnBatchSize,
+        skip: batchIndex * columnBatchSize,
+      },
+    );
+
+    debugResponses.push(debugResponse);
+
+    if (batch.length === 0) {
+      break;
+    }
+
+    columns.push(...batch);
+
+    if (batch.length < columnBatchSize) {
+      break;
+    }
+  }
+
+  return {
+    columns,
+    debugResponses,
   };
 }
 
@@ -683,7 +760,18 @@ async function loadPageChunkBatch(
   };
 }
 
-async function loadResultRows(resultId: string, page: number) {
+async function loadResultRows(
+  resultId: string,
+  page: number,
+  options: {
+    onPartialRows?: (progress: {
+      rows: WorkbenchRow[];
+      debugResponses: WorkbenchDebugResponse[];
+      loadedChunkCount: number;
+      isFinal: boolean;
+    }) => void;
+  } = {},
+) {
   const chunkBatchSize = 100;
   const maxChunkBatches = 1000;
   const chunks: SapSqlwbPageChunk[] = [];
@@ -702,7 +790,22 @@ async function loadResultRows(resultId: string, page: number) {
 
     chunks.push(...batch);
 
-    if (hasLastChunk(batch) || batch.length < chunkBatchSize) {
+    const isFinalBatch = hasLastChunk(batch) || batch.length < chunkBatchSize;
+    const partialRowsJson = joinChunkPayloads(chunks);
+    const partialRows = isFinalBatch
+      ? parseRowsJson(partialRowsJson)
+      : parsePartialRowsJson(partialRowsJson);
+
+    if (partialRows) {
+      options.onPartialRows?.({
+        rows: partialRows,
+        debugResponses: [...debugResponses],
+        loadedChunkCount: chunks.length,
+        isFinal: isFinalBatch,
+      });
+    }
+
+    if (isFinalBatch) {
       break;
     }
   }
@@ -721,11 +824,7 @@ async function loadResultRows(resultId: string, page: number) {
     };
   }
 
-  const rowsJson = chunks
-    .slice()
-    .sort((a, b) => normalizeNumber(a.ChunkNo) - normalizeNumber(b.ChunkNo))
-    .map((chunk) => chunk.PayloadPart ?? "")
-    .join("");
+  const rowsJson = joinChunkPayloads(chunks);
 
   return {
     rows: parseRowsJson(rowsJson),
@@ -738,6 +837,7 @@ async function executeLiveRunQuery(
   fallbackEntity: string,
   availableEntityNames: string[],
   pageNumber = 1,
+  options: WorkbenchQueryOptions = {},
 ): Promise<WorkbenchQueryExecution> {
   const queryPlan = parseWorkbenchQuery(
     queryText,
@@ -790,18 +890,39 @@ async function executeLiveRunQuery(
 
   const {
     columns: sapColumns,
-    debugResponse: columnDebugResponse,
+    debugResponses: columnDebugResponses,
   } = await loadResultColumns(resultId);
+  const entitySetName = result.ObjectName || queryPlan.entitySetName;
   const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
     resultId,
     page,
+    {
+      onPartialRows: (progress) => {
+        const partialDebugResponses = [
+          ...columnDebugResponses,
+          ...progress.debugResponses,
+        ];
+
+        options.onProgress?.({
+          entitySetName,
+          columns: normalizeColumns(sapColumns, progress.rows),
+          rows: progress.rows,
+          debugResponses: partialDebugResponses,
+          queryPath,
+          isCountQuery: queryPlan.isCountQuery,
+          pageInfo: buildPageInfo(result, progress.rows.length),
+          isFinal: progress.isFinal,
+          loadedChunkCount: progress.loadedChunkCount,
+        });
+      },
+    },
   );
-  const debugResponses = [columnDebugResponse, ...chunkDebugResponses];
+  const debugResponses = [...columnDebugResponses, ...chunkDebugResponses];
   const columns = normalizeColumns(sapColumns, rows);
   const pageInfo = buildPageInfo(result, rows.length);
 
   return {
-    entitySetName: result.ObjectName || queryPlan.entitySetName,
+    entitySetName,
     columns,
     rows,
     debugResponses,
@@ -815,6 +936,7 @@ async function executeLivePreviewTable(
   objectName: string,
   maxRows = 100,
   pageNumber = 1,
+  options: WorkbenchQueryOptions = {},
 ): Promise<WorkbenchQueryExecution> {
   const queryPath = buildPreviewTablePath(objectName, maxRows, pageNumber);
   const result = unwrapPreviewTableResult(
@@ -850,17 +972,38 @@ async function executeLivePreviewTable(
   const page = Math.max(1, normalizeNumber(result.Page, pageNumber));
   const {
     columns: sapColumns,
-    debugResponse: columnDebugResponse,
+    debugResponses: columnDebugResponses,
   } = await loadResultColumns(resultId);
+  const entitySetName = result.ObjectName || objectName;
   const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
     resultId,
     page,
+    {
+      onPartialRows: (progress) => {
+        const partialDebugResponses = [
+          ...columnDebugResponses,
+          ...progress.debugResponses,
+        ];
+
+        options.onProgress?.({
+          entitySetName,
+          columns: normalizeColumns(sapColumns, progress.rows),
+          rows: progress.rows,
+          debugResponses: partialDebugResponses,
+          queryPath,
+          isCountQuery: false,
+          pageInfo: buildPageInfo(result, progress.rows.length),
+          isFinal: progress.isFinal,
+          loadedChunkCount: progress.loadedChunkCount,
+        });
+      },
+    },
   );
-  const debugResponses = [columnDebugResponse, ...chunkDebugResponses];
+  const debugResponses = [...columnDebugResponses, ...chunkDebugResponses];
   const pageInfo = buildPageInfo(result, rows.length);
 
   return {
-    entitySetName: result.ObjectName || objectName,
+    entitySetName,
     columns: normalizeColumns(sapColumns, rows),
     rows,
     debugResponses,
@@ -1037,11 +1180,23 @@ export const workbenchService = {
     fallbackEntity: string,
     availableEntityNames: string[],
     page = 1,
+    options?: WorkbenchQueryOptions,
   ) => {
-    return executeLiveRunQuery(queryText, fallbackEntity, availableEntityNames, page);
+    return executeLiveRunQuery(
+      queryText,
+      fallbackEntity,
+      availableEntityNames,
+      page,
+      options,
+    );
   },
 
-  previewTable: async (objectName: string, maxRows = 100, page = 1) => {
-    return executeLivePreviewTable(objectName, maxRows, page);
+  previewTable: async (
+    objectName: string,
+    maxRows = 100,
+    page = 1,
+    options?: WorkbenchQueryOptions,
+  ) => {
+    return executeLivePreviewTable(objectName, maxRows, page, options);
   },
 };

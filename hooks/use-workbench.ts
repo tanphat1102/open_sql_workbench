@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { workbenchService } from "@/services/workbenchService";
 import type {
@@ -87,6 +87,7 @@ export function useWorkbench() {
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
+  const operationRef = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -254,6 +255,8 @@ export function useWorkbench() {
   }
 
   function runQuery(page = 1) {
+    const operationId = operationRef.current + 1;
+    operationRef.current = operationId;
     setIsRunning(true);
 
     void (async () => {
@@ -263,7 +266,25 @@ export function useWorkbench() {
           selectedEntityName,
           entities.map((entity) => entity.name),
           page,
+          {
+            onProgress: (progress) => {
+              if (operationRef.current !== operationId) {
+                return;
+              }
+
+              setResultRows(progress.rows);
+              setResultColumns(progress.columns);
+              setResultDebugResponses(progress.debugResponses);
+              setResultPageInfo(progress.pageInfo);
+              setResultSource({ type: "query" });
+              setSelectedEntityName(progress.entitySetName);
+            },
+          },
         );
+
+        if (operationRef.current !== operationId) {
+          return;
+        }
 
         setResultRows(execution.rows);
         setResultColumns(execution.columns);
@@ -285,6 +306,10 @@ export function useWorkbench() {
           ...currentEntries,
         ]);
       } catch (error) {
+        if (operationRef.current !== operationId) {
+          return;
+        }
+
         // If auth error, prompt for login
         if (getErrorStatus(error) === 401) {
           setNeedLogin(true);
@@ -299,24 +324,50 @@ export function useWorkbench() {
                 ? error.message
                 : "Unable to execute live OData query.",
             timestampRaw: "/Date(1716496400000)/",
-            tone: "warning",
+            tone: "error",
           },
           ...currentEntries,
         ]);
       } finally {
-        setIsRunning(false);
+        if (operationRef.current === operationId) {
+          setIsRunning(false);
+        }
       }
     })();
   }
 
   function previewTable(entityName: string, page = 1) {
+    const operationId = operationRef.current + 1;
+    operationRef.current = operationId;
     setSelectedEntityName(entityName);
     setIsRunning(true);
     setPreviewingEntityName(entityName);
 
     void (async () => {
       try {
-        const execution = await workbenchService.previewTable(entityName, undefined, page);
+        const execution = await workbenchService.previewTable(
+          entityName,
+          undefined,
+          page,
+          {
+            onProgress: (progress) => {
+              if (operationRef.current !== operationId) {
+                return;
+              }
+
+              setResultRows(progress.rows);
+              setResultColumns(progress.columns);
+              setResultDebugResponses(progress.debugResponses);
+              setResultPageInfo(progress.pageInfo);
+              setResultSource({ type: "preview", entityName });
+              setSelectedEntityName(progress.entitySetName);
+            },
+          },
+        );
+
+        if (operationRef.current !== operationId) {
+          return;
+        }
 
         setResultRows(execution.rows);
         setResultColumns(execution.columns);
@@ -336,6 +387,10 @@ export function useWorkbench() {
           ...currentEntries,
         ]);
       } catch (error) {
+        if (operationRef.current !== operationId) {
+          return;
+        }
+
         if (getErrorStatus(error) === 401) {
           setNeedLogin(true);
         }
@@ -350,13 +405,15 @@ export function useWorkbench() {
                 ? error.message
                 : "Unable to preview the selected SAP table.",
             timestampRaw: "/Date(1716496400000)/",
-            tone: "warning",
+            tone: "error",
           },
           ...currentEntries,
         ]);
       } finally {
-        setIsRunning(false);
-        setPreviewingEntityName("");
+        if (operationRef.current === operationId) {
+          setIsRunning(false);
+          setPreviewingEntityName("");
+        }
       }
     })();
   }

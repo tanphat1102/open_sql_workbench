@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Wand2 } from "lucide-react";
+import { LoaderCircle, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatOpenSql } from "@/lib/openSqlFormatter";
 import { toast } from "@/lib/toast";
 import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
@@ -80,8 +86,9 @@ export function QueryWorkbench({
   }
 
   return (
-    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
-      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+    <TooltipProvider>
+      <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <div className="flex flex-col gap-2 border-b border-border bg-[#f7fbff] px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
@@ -137,23 +144,36 @@ export function QueryWorkbench({
             <div className="text-xs text-muted-foreground">
               {queryText.length} chars
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleFormatQuery}
-              disabled={isRunning}
-              className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
-            >
-              <Wand2 />
-              Format
-            </Button>
-            <Button
-              onClick={handleRunQuery}
-              disabled={isRunning}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              {isRunning ? "Executing..." : "Execute"}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleFormatQuery}
+                  disabled={isRunning}
+                  className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+                >
+                  <Wand2 />
+                  Format
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Format the current Open SQL statement</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handleRunQuery}
+                  disabled={isRunning}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  {isRunning ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : null}
+                  {isRunning ? "Executing..." : "Execute"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Run the query through SAP Gateway</TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
@@ -168,7 +188,8 @@ export function QueryWorkbench({
             height={editorHeight}
           />
         </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </TooltipProvider>
   );
 }

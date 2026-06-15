@@ -22,6 +22,12 @@ import { ResultsTable } from "@/components/workbench/results-table";
 import { ActionOutput } from "@/components/workbench/action-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useWorkbench } from "@/hooks/use-workbench";
 import { toast } from "@/lib/toast";
 import { authService } from "@/services/authService";
@@ -58,6 +64,7 @@ export function WorkbenchDashboard() {
   const [showObjectExplorer, setShowObjectExplorer] = useState(true);
   const [showResults, setShowResults] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
+  const [showFullscreenResults, setShowFullscreenResults] = useState(false);
   const [objectExplorerWidth, setObjectExplorerWidth] = useState(300);
   const [queryPanelHeight, setQueryPanelHeight] = useState(260);
   const [messagesPanelHeight, setMessagesPanelHeight] = useState(150);
@@ -163,6 +170,14 @@ export function WorkbenchDashboard() {
   function executeAndShowResults() {
     setShowResults(true);
     runQuery();
+  }
+
+  function setResultsFullscreen(open: boolean) {
+    if (open) {
+      setShowResults(true);
+    }
+
+    setShowFullscreenResults(open);
   }
 
   function beginObjectExplorerResize(event: PointerEvent<HTMLDivElement>) {
@@ -445,6 +460,9 @@ export function WorkbenchDashboard() {
                     debugResponses={resultDebugResponses}
                     pageInfo={resultPageInfo}
                     rows={resultRows}
+                    isFullscreen={false}
+                    isLoading={isRunning}
+                    onFullscreenChange={setResultsFullscreen}
                     onPageChange={loadResultPage}
                     onClose={() => setShowResults(false)}
                   />
@@ -479,6 +497,9 @@ export function WorkbenchDashboard() {
                   debugResponses={resultDebugResponses}
                   pageInfo={resultPageInfo}
                   rows={resultRows}
+                  isFullscreen={false}
+                  isLoading={isRunning}
+                  onFullscreenChange={setResultsFullscreen}
                   onPageChange={loadResultPage}
                   onClose={() => setShowResults(false)}
                 />
@@ -494,6 +515,31 @@ export function WorkbenchDashboard() {
           </div>
         </div>
       </section>
+      <Dialog
+        open={showFullscreenResults}
+        onOpenChange={setShowFullscreenResults}
+      >
+        <DialogContent
+          className="flex h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-none flex-col gap-0 overflow-hidden rounded-lg p-0"
+          showCloseButton={false}
+        >
+          <DialogTitle className="sr-only">Fullscreen Results</DialogTitle>
+          <DialogDescription className="sr-only">
+            Fullscreen data preview for the current result set.
+          </DialogDescription>
+          <ResultsTable
+            entityName={selectedEntity?.name ?? selectedEntityName}
+            columns={resultColumns}
+            debugResponses={resultDebugResponses}
+            pageInfo={resultPageInfo}
+            rows={resultRows}
+            isFullscreen
+            isLoading={isRunning}
+            onFullscreenChange={setResultsFullscreen}
+            onPageChange={loadResultPage}
+          />
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

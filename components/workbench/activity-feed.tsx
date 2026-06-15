@@ -20,6 +20,7 @@ const toneLabelMap: Record<WorkbenchActivity["tone"], string> = {
   success: "success",
   info: "info",
   warning: "warning",
+  error: "error",
 };
 
 function formatSapDate(rawValue: string) {

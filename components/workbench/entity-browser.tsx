@@ -10,7 +10,13 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Eye, X } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Eye, LoaderCircle, X } from "lucide-react";
 import { parseSapDate } from "@/lib/sapParser";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEntity } from "@/types/workbench";
@@ -49,7 +55,8 @@ export function EntityBrowser({
   const selectedEntityType = selectedEntity?.tags[1] ?? "Object";
 
   return (
-    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
+    <TooltipProvider>
+      <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
       <CardHeader className="border-b border-border px-3 py-2">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -61,15 +68,19 @@ export function EntityBrowser({
             </CardDescription>
           </div>
           {onClose ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
-              aria-label="Hide Object Explorer"
-              title="Hide Object Explorer"
-            >
-              <X className="size-4" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+                  aria-label="Hide Object Explorer"
+                >
+                  <X className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Hide Object Explorer</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
       </CardHeader>
@@ -103,19 +114,29 @@ export function EntityBrowser({
                     </span>
                   </button>
                   {onPreviewEntity ? (
-                    <button
-                      type="button"
-                      onClick={() => onPreviewEntity(entity.name)}
-                      disabled={previewingEntityName === entity.name}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
-                      aria-label={`Preview ${entity.name}`}
-                      title={`Preview ${entity.name}`}
-                    >
-                      <Eye className="size-3.5" />
-                      {previewingEntityName === entity.name
-                        ? "Loading"
-                        : "Preview"}
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => onPreviewEntity(entity.name)}
+                          disabled={previewingEntityName === entity.name}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+                          aria-label={`Preview ${entity.name}`}
+                        >
+                          {previewingEntityName === entity.name ? (
+                            <LoaderCircle className="size-3.5 animate-spin" />
+                          ) : (
+                            <Eye className="size-3.5" />
+                          )}
+                          {previewingEntityName === entity.name
+                            ? "Loading"
+                            : "Preview"}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Preview top rows from {entity.name}
+                      </TooltipContent>
+                    </Tooltip>
                   ) : null}
                 </div>
               );
@@ -162,6 +183,7 @@ export function EntityBrowser({
           </div>
         ) : null}
       </CardContent>
-    </Card>
+      </Card>
+    </TooltipProvider>
   );
 }

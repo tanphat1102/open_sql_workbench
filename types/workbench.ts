@@ -50,7 +50,7 @@ export type WorkbenchActivity = {
   title: string;
   detail: string;
   timestampRaw: string;
-  tone: "success" | "info" | "warning";
+  tone: "success" | "info" | "warning" | "error";
 };
 
 export type WorkbenchDebugResponse = {

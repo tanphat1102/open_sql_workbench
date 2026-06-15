@@ -16,6 +16,9 @@ import {
   Download,
   FileJson,
   FileSpreadsheet,
+  LoaderCircle,
+  Maximize2,
+  Minimize2,
   X,
 } from "lucide-react";
 
@@ -33,6 +36,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { parseSapDate } from "@/lib/sapParser";
 import type {
   WorkbenchColumn,
@@ -47,7 +56,10 @@ type ResultsTableProps = {
   debugResponses: WorkbenchDebugResponse[];
   pageInfo: WorkbenchPageInfo;
   rows: WorkbenchRow[];
+  isFullscreen?: boolean;
+  isLoading?: boolean;
   onClose?: () => void;
+  onFullscreenChange?: (open: boolean) => void;
   onPageChange?: (page: number) => void;
 };
 
@@ -55,6 +67,11 @@ type HeaderDragState = {
   pointerId: number;
   startX: number;
   scrollLeft: number;
+};
+
+type VisibleRowEntry = {
+  row: WorkbenchRow;
+  pageIndex: number;
 };
 
 const estimatedResultRowHeight = 37;
@@ -133,11 +150,17 @@ export function ResultsTable({
   debugResponses,
   pageInfo,
   rows,
+  isFullscreen = false,
+  isLoading = false,
   onClose,
+  onFullscreenChange,
   onPageChange,
 }: ResultsTableProps) {
   const [searchText, setSearchText] = useState("");
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<
+    "xlsx" | "csv" | null
+  >(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [selectedDebugIndex, setSelectedDebugIndex] = useState(0);
   const [isHeaderDragging, setIsHeaderDragging] = useState(false);
@@ -149,14 +172,15 @@ export function ResultsTable({
     () => (columns.length > 0 ? columns : buildFallbackColumns(rows)),
     [columns, rows],
   );
-  const visibleRows = useMemo(() => {
+  const visibleRowEntries = useMemo<VisibleRowEntry[]>(() => {
     const normalizedSearch = searchText.trim().toLowerCase();
+    const rowEntries = rows.map((row, pageIndex) => ({ row, pageIndex }));
 
     if (!normalizedSearch) {
-      return rows;
+      return rowEntries;
     }
 
-    return rows.filter((row) =>
+    return rowEntries.filter(({ row }) =>
       visibleColumns.some((column) =>
         formatCellValue(row[column.key])
           .toLowerCase()
@@ -175,9 +199,13 @@ export function ResultsTable({
       : rows.length > 0
         ? 1
         : 0;
+  const visibleRows = useMemo(
+    () => visibleRowEntries.map((entry) => entry.row),
+    [visibleRowEntries],
+  );
   const pageEnd =
     pageStart > 0 ? pageStart + Math.max(visibleRows.length, returnedRows) - 1 : 0;
-  const pageRows = visibleRows;
+  const pageRows = visibleRowEntries;
   const virtualStartIndex = Math.max(
     0,
     Math.floor(scrollTop / estimatedResultRowHeight) - resultRowOverscan,
@@ -198,7 +226,7 @@ export function ResultsTable({
       totalPages > 0 &&
       currentPage < totalPages,
   );
-  const tableMinWidth = Math.max(visibleColumns.length * 168, 720);
+  const tableMinWidth = Math.max(visibleColumns.length * 168 + 56, 720);
 
   function handleSearchChange(value: string) {
     setSearchText(value);
@@ -266,27 +294,33 @@ export function ResultsTable({
   }
 
   async function handleDownload({ format }: { format: "xlsx" | "csv" }) {
-    const XLSX = await import("xlsx");
-    const worksheet = XLSX.utils.aoa_to_sheet(
-      buildSheetRows(visibleColumns, visibleRows),
-    );
+    setDownloadingFormat(format);
 
-    if (format === "xlsx") {
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
-      XLSX.writeFile(workbook, buildFileName(entityName, "xlsx"), {
-        compression: true,
-      });
+    try {
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.aoa_to_sheet(
+        buildSheetRows(visibleColumns, visibleRows),
+      );
+
+      if (format === "xlsx") {
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+        XLSX.writeFile(workbook, buildFileName(entityName, "xlsx"), {
+          compression: true,
+        });
+        setDownloadOpen(false);
+        return;
+      }
+
+      const csv = XLSX.utils.sheet_to_csv(worksheet);
+      const content = `\uFEFFsep=,\r\n${csv}`;
+      const fileName = buildFileName(entityName, "csv");
+
+      downloadTextFile(fileName, content);
       setDownloadOpen(false);
-      return;
+    } finally {
+      setDownloadingFormat(null);
     }
-
-    const csv = XLSX.utils.sheet_to_csv(worksheet);
-    const content = `\uFEFFsep=,\r\n${csv}`;
-    const fileName = buildFileName(entityName, "csv");
-
-    downloadTextFile(fileName, content);
-    setDownloadOpen(false);
   }
 
   const selectedDebugResponse = debugResponses[selectedDebugIndex];
@@ -311,7 +345,8 @@ export function ResultsTable({
   }, [visibleRows.length]);
 
   return (
-    <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
+    <TooltipProvider>
+      <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
       <CardHeader className="border-b border-border px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -322,71 +357,127 @@ export function ResultsTable({
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={debugResponses.length === 0}
-              onClick={() => {
-                setSelectedDebugIndex(0);
-                setDebugOpen(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-            >
-              <FileJson className="size-4" />
-              SAP responses
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  disabled={debugResponses.length === 0}
+                  onClick={() => {
+                    setSelectedDebugIndex(0);
+                    setDebugOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <FileJson className="size-4" />
+                  SAP responses
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Inspect raw SAP ColumnSet and PageChunk responses.
+              </TooltipContent>
+            </Tooltip>
             <input
               placeholder="Search"
               className="rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
               value={searchText}
               onChange={(event) => handleSearchChange(event.target.value)}
             />
+            {onFullscreenChange ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onFullscreenChange(!isFullscreen)}
+                    className="rounded-md border border-border bg-white p-2 text-primary transition hover:bg-accent"
+                    aria-label={
+                      isFullscreen ? "Exit fullscreen" : "Open fullscreen"
+                    }
+                  >
+                    {isFullscreen ? (
+                      <Minimize2 className="size-4" />
+                    ) : (
+                      <Maximize2 className="size-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             <div className="relative">
               <button
                 type="button"
-                disabled={visibleRows.length === 0}
+                disabled={visibleRows.length === 0 || downloadingFormat !== null}
                 onClick={() => setDownloadOpen((current) => !current)}
                 className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
               >
-                <Download className="size-4" />
-                Download
+                {downloadingFormat ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <Download className="size-4" />
+                )}
+                {downloadingFormat ? "Exporting..." : "Download"}
               </button>
               {downloadOpen ? (
                 <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border border-border bg-white p-1 shadow-md">
                   <button
                     type="button"
+                    disabled={downloadingFormat !== null}
                     onClick={() => void handleDownload({ format: "xlsx" })}
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent"
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <FileSpreadsheet className="size-4 text-primary" />
+                    {downloadingFormat === "xlsx" ? (
+                      <LoaderCircle className="size-4 animate-spin text-primary" />
+                    ) : (
+                      <FileSpreadsheet className="size-4 text-primary" />
+                    )}
                     Excel workbook
                   </button>
                   <button
                     type="button"
+                    disabled={downloadingFormat !== null}
                     onClick={() => void handleDownload({ format: "csv" })}
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent"
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <Download className="size-4 text-primary" />
+                    {downloadingFormat === "csv" ? (
+                      <LoaderCircle className="size-4 animate-spin text-primary" />
+                    ) : (
+                      <Download className="size-4 text-primary" />
+                    )}
                     CSV
                   </button>
                 </div>
               ) : null}
             </div>
             {onClose ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-transparent p-2 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
-                aria-label="Hide Results"
-                title="Hide Results"
-              >
-                <X className="size-4" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-md border border-transparent p-2 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+                    aria-label="Hide Results"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Hide Results</TooltipContent>
+              </Tooltip>
             ) : null}
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="min-h-0 flex-1 p-0">
+      <CardContent className="relative min-h-0 flex-1 p-0">
+        {isLoading ? (
+          <div className="pointer-events-none absolute right-3 top-3 z-10">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-white/95 px-3 py-2 text-sm text-primary shadow-sm">
+              <LoaderCircle className="size-4 animate-spin" />
+              Loading results
+            </div>
+          </div>
+        ) : null}
         {visibleRows.length === 0 ? (
           <div className="m-3 rounded-lg border border-dashed border-[#b8d6ef] bg-accent p-8 text-center text-sm text-muted-foreground">
             {rows.length === 0
@@ -415,6 +506,9 @@ export function ResultsTable({
                 onPointerCancel={handleHeaderPointerEnd}
               >
                 <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="sticky left-0 top-0 z-20 w-14 border-b border-r border-border bg-accent px-3 py-2 text-xs font-semibold text-primary">
+                    #
+                  </TableHead>
                   {visibleColumns.map((column) => (
                     <TableHead
                       key={column.key}
@@ -444,32 +538,40 @@ export function ResultsTable({
                 {topSpacerHeight > 0 ? (
                   <TableRow aria-hidden="true" className="border-0">
                     <TableCell
-                      colSpan={visibleColumns.length}
+                      colSpan={visibleColumns.length + 1}
                       className="p-0"
                       style={{ height: `${topSpacerHeight}px` }}
                     />
                   </TableRow>
                 ) : null}
-                {virtualRows.map((row, rowIndex) => (
-                  <TableRow
-                    key={`${entityName}-${currentPage}-${virtualStartIndex + rowIndex}`}
-                    className="border-border hover:bg-accent/40"
-                  >
-                    {visibleColumns.map((column) => (
-                      <TableCell
-                        key={column.key}
-                        className="w-[168px] truncate px-3 py-2 text-foreground"
-                        title={formatCellValue(row[column.key])}
-                      >
-                        {formatCellValue(row[column.key])}
+                {virtualRows.map(({ row, pageIndex }, rowIndex) => {
+                  const rowNumber =
+                    pageStart > 0 ? pageStart + pageIndex : pageIndex + 1;
+
+                  return (
+                    <TableRow
+                      key={`${entityName}-${currentPage}-${virtualStartIndex + rowIndex}`}
+                      className="border-border hover:bg-accent/40"
+                    >
+                      <TableCell className="sticky left-0 z-10 w-14 border-r border-border bg-white px-3 py-2 text-right text-xs tabular-nums text-muted-foreground">
+                        {rowNumber}
                       </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
+                      {visibleColumns.map((column) => (
+                        <TableCell
+                          key={column.key}
+                          className="w-[168px] truncate px-3 py-2 text-foreground"
+                          title={formatCellValue(row[column.key])}
+                        >
+                          {formatCellValue(row[column.key])}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })}
                 {bottomSpacerHeight > 0 ? (
                   <TableRow aria-hidden="true" className="border-0">
                     <TableCell
-                      colSpan={visibleColumns.length}
+                      colSpan={visibleColumns.length + 1}
                       className="p-0"
                       style={{ height: `${bottomSpacerHeight}px` }}
                     />
@@ -496,7 +598,7 @@ export function ResultsTable({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              disabled={!canGoPrevious}
+              disabled={!canGoPrevious || isLoading}
               onClick={() => onPageChange?.(1)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="First page"
@@ -505,7 +607,7 @@ export function ResultsTable({
             </button>
             <button
               type="button"
-              disabled={!canGoPrevious}
+              disabled={!canGoPrevious || isLoading}
               onClick={() => onPageChange?.(currentPage - 1)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="Previous page"
@@ -514,7 +616,7 @@ export function ResultsTable({
             </button>
             <button
               type="button"
-              disabled={!canGoNext}
+              disabled={!canGoNext || isLoading}
               onClick={() => onPageChange?.(currentPage + 1)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="Next page"
@@ -523,7 +625,7 @@ export function ResultsTable({
             </button>
             <button
               type="button"
-              disabled={!canGoNext}
+              disabled={!canGoNext || isLoading}
               onClick={() => onPageChange?.(totalPages)}
               className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
               aria-label="Last page"
@@ -660,6 +762,7 @@ export function ResultsTable({
           </div>
         </div>
       ) : null}
-    </Card>
+      </Card>
+    </TooltipProvider>
   );
 }
