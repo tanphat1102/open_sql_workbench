@@ -25,7 +25,8 @@ function getSapCookieHeader(cookieHeader: string) {
     .map((cookie) => cookie.trim())
     .map((cookie) => {
       const separatorIndex = cookie.indexOf("=");
-      const name = separatorIndex > 0 ? cookie.slice(0, separatorIndex) : cookie;
+      const name =
+        separatorIndex > 0 ? cookie.slice(0, separatorIndex) : cookie;
       const value = separatorIndex > 0 ? cookie.slice(separatorIndex + 1) : "";
 
       if (
