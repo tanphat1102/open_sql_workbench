@@ -55,6 +55,34 @@ type ResultSource =
   | { type: "query" }
   | { type: "preview"; entityName: string };
 
+type ResultPageCacheEntry = {
+  rows: WorkbenchRow[];
+  debugResponses: WorkbenchDebugResponse[];
+  pageInfo: WorkbenchPageInfo;
+};
+
+type ResultContext = {
+  resultId: string;
+  cacheKey: string;
+  source: ResultSource;
+  queryText: string;
+  entitySetName: string;
+  columns: WorkbenchColumn[];
+  pageInfo: WorkbenchPageInfo;
+  queryPath: string;
+  isCountQuery: boolean;
+};
+
+function getResultCacheKey(source: ResultSource, queryText: string) {
+  return source.type === "preview"
+    ? `preview:${source.entityName}`
+    : `query:${queryText.trim()}`;
+}
+
+function getResultPageCacheKey(cacheKey: string, page: number) {
+  return `${cacheKey}:${page}`;
+}
+
 export function useWorkbench() {
   const [selectedEntityName, setSelectedEntityName] = useState(defaultEntity);
   const [queryText, setQueryText] = useState(
@@ -88,6 +116,8 @@ export function useWorkbench() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
   const operationRef = useRef(0);
+  const resultContextRef = useRef<ResultContext | null>(null);
+  const pageCacheRef = useRef(new Map<string, ResultPageCacheEntry>());
 
   useEffect(() => {
     let isMounted = true;
@@ -234,6 +264,8 @@ export function useWorkbench() {
 
   function handleEntityChange(entityName: string) {
     setSelectedEntityName(entityName);
+    resultContextRef.current = null;
+    pageCacheRef.current.clear();
 
     const nextTemplate =
       snapshot.templates.find((template) => template.id === activeTemplateId) ??
@@ -252,6 +284,123 @@ export function useWorkbench() {
   function applyTemplate(template: WorkbenchTemplate) {
     setActiveTemplateId(template.id);
     setQueryText(buildTemplateQuery(template, selectedEntityName));
+    resultContextRef.current = null;
+    pageCacheRef.current.clear();
+  }
+
+  function handleQueryTextChange(value: string) {
+    setQueryText(value);
+    resultContextRef.current = null;
+    pageCacheRef.current.clear();
+  }
+
+  function cacheResultPage(
+    cacheKey: string,
+    pageInfo: WorkbenchPageInfo,
+    rows: WorkbenchRow[],
+    debugResponses: WorkbenchDebugResponse[],
+  ) {
+    if (!cacheKey || pageInfo.page < 1) {
+      return;
+    }
+
+    pageCacheRef.current.set(getResultPageCacheKey(cacheKey, pageInfo.page), {
+      rows,
+      debugResponses,
+      pageInfo,
+    });
+  }
+
+  function setResultContext(
+    execution: {
+      entitySetName: string;
+      columns: WorkbenchColumn[];
+      debugResponses: WorkbenchDebugResponse[];
+      isCountQuery: boolean;
+      pageInfo: WorkbenchPageInfo;
+      queryPath: string;
+      rows: WorkbenchRow[];
+    },
+    source: ResultSource,
+  ) {
+    const resultId = execution.pageInfo.resultId;
+    const cacheKey = getResultCacheKey(source, queryText);
+
+    if (!resultId) {
+      resultContextRef.current = null;
+      pageCacheRef.current.clear();
+      return;
+    }
+
+    if (resultContextRef.current?.cacheKey !== cacheKey) {
+      pageCacheRef.current.clear();
+    }
+
+    resultContextRef.current = {
+      resultId,
+      cacheKey,
+      source,
+      queryText,
+      entitySetName: execution.entitySetName,
+      columns: execution.columns,
+      pageInfo: execution.pageInfo,
+      queryPath: execution.queryPath,
+      isCountQuery: execution.isCountQuery,
+    };
+    cacheResultPage(
+      cacheKey,
+      execution.pageInfo,
+      execution.rows,
+      execution.debugResponses,
+    );
+  }
+
+  function prefetchResultPage(context: ResultContext, page: number) {
+    if (
+      page < 1 ||
+      (context.pageInfo.totalPages > 0 && page > context.pageInfo.totalPages)
+    ) {
+      return;
+    }
+
+    const pageCacheKey = getResultPageCacheKey(context.cacheKey, page);
+
+    if (pageCacheRef.current.has(pageCacheKey)) {
+      return;
+    }
+
+    const request =
+      context.source.type === "preview"
+        ? workbenchService.previewTable(
+            context.source.entityName,
+            undefined,
+            page,
+            { reuseColumns: context.columns },
+          )
+        : workbenchService.executeQuery(
+            context.queryText,
+            context.entitySetName,
+            entities.map((entity) => entity.name),
+            page,
+            { reuseColumns: context.columns },
+          );
+
+    void request
+      .then((execution) => {
+        if (resultContextRef.current?.cacheKey !== context.cacheKey) {
+          return;
+        }
+
+        cacheResultPage(
+          context.cacheKey,
+          execution.pageInfo,
+          execution.rows,
+          execution.debugResponses,
+        );
+      })
+      .catch(() => {
+        // Prefetch is opportunistic. User-triggered navigation will retry.
+      });
   }
 
   function runQuery(page = 1) {
@@ -292,6 +441,12 @@ export function useWorkbench() {
         setResultPageInfo(execution.pageInfo);
         setResultSource({ type: "query" });
         setSelectedEntityName(execution.entitySetName);
+        setResultContext(execution, { type: "query" });
+
+        const context = resultContextRef.current;
+        if (context) {
+          prefetchResultPage(context, execution.pageInfo.page + 1);
+        }
 
         setActivityEntries((currentEntries) => [
           {
@@ -375,6 +530,12 @@ export function useWorkbench() {
         setResultPageInfo(execution.pageInfo);
         setResultSource({ type: "preview", entityName });
         setSelectedEntityName(execution.entitySetName);
+        setResultContext(execution, { type: "preview", entityName });
+
+        const context = resultContextRef.current;
+        if (context) {
+          prefetchResultPage(context, execution.pageInfo.page + 1);
+        }
 
         setActivityEntries((currentEntries) => [
           {
@@ -423,12 +584,122 @@ export function useWorkbench() {
       return;
     }
 
-    if (resultSource.type === "preview") {
+    const context = resultContextRef.current;
+
+    if (!context || context.source.type !== resultSource.type) {
+      if (resultSource.type === "preview") {
+        previewTable(resultSource.entityName, page);
+        return;
+      }
+
+      runQuery(page);
+      return;
+    }
+
+    if (
+      resultSource.type === "preview" &&
+      (context.source.type !== "preview" ||
+        context.source.entityName !== resultSource.entityName)
+    ) {
       previewTable(resultSource.entityName, page);
       return;
     }
 
-    runQuery(page);
+    const cachedPage = pageCacheRef.current.get(
+      getResultPageCacheKey(context.cacheKey, page),
+    );
+
+    if (cachedPage) {
+      setResultRows(cachedPage.rows);
+      setResultColumns(context.columns);
+      setResultDebugResponses(cachedPage.debugResponses);
+      setResultPageInfo(cachedPage.pageInfo);
+      prefetchResultPage(context, page + 1);
+      return;
+    }
+
+    const operationId = operationRef.current + 1;
+    operationRef.current = operationId;
+    setIsRunning(true);
+
+    void (async () => {
+      try {
+        const execution =
+          resultSource.type === "preview"
+            ? await workbenchService.previewTable(
+                resultSource.entityName,
+                undefined,
+                page,
+                {
+                  reuseColumns: context.columns,
+                  onProgress: (progress) => {
+                    if (operationRef.current !== operationId) {
+                      return;
+                    }
+
+                    setResultRows(progress.rows);
+                    setResultColumns(progress.columns);
+                    setResultDebugResponses(progress.debugResponses);
+                    setResultPageInfo(progress.pageInfo);
+                  },
+                },
+              )
+            : await workbenchService.executeQuery(
+                context.queryText,
+                context.entitySetName,
+                entities.map((entity) => entity.name),
+                page,
+                {
+                  reuseColumns: context.columns,
+                  onProgress: (progress) => {
+                    if (operationRef.current !== operationId) {
+                      return;
+                    }
+
+                    setResultRows(progress.rows);
+                    setResultColumns(progress.columns);
+                    setResultDebugResponses(progress.debugResponses);
+                    setResultPageInfo(progress.pageInfo);
+                  },
+                },
+              );
+
+        if (operationRef.current !== operationId) {
+          return;
+        }
+
+        setResultRows(execution.rows);
+        setResultColumns(execution.columns);
+        setResultDebugResponses(execution.debugResponses);
+        setResultPageInfo(execution.pageInfo);
+        setResultContext(execution, context.source);
+        cacheResultPage(
+          context.cacheKey,
+          execution.pageInfo,
+          execution.rows,
+          execution.debugResponses,
+        );
+        const nextContext = resultContextRef.current;
+        if (nextContext) {
+          prefetchResultPage(nextContext, page + 1);
+        }
+      } catch {
+        if (operationRef.current !== operationId) {
+          return;
+        }
+
+        if (resultSource.type === "preview") {
+          previewTable(resultSource.entityName, page);
+          return;
+        }
+
+        runQuery(page);
+      } finally {
+        if (operationRef.current === operationId) {
+          setIsRunning(false);
+        }
+      }
+    })();
   }
 
   return {
@@ -438,7 +709,7 @@ export function useWorkbench() {
     entities,
     templates: queryTemplates,
     queryText,
-    setQueryText,
+    setQueryText: handleQueryTextChange,
     isRunning,
     previewingEntityName,
     isLoadingSnapshot,

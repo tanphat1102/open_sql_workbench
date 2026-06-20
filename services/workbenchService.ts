@@ -252,6 +252,7 @@ type WorkbenchQueryProgress = WorkbenchQueryExecution & {
 
 type WorkbenchQueryOptions = {
   onProgress?: (progress: WorkbenchQueryProgress) => void;
+  reuseColumns?: WorkbenchColumn[];
 };
 
 type EntityNameResolver = (entityName: string) => string;
@@ -888,10 +889,13 @@ async function executeLiveRunQuery(
     );
   }
 
+  const reusedColumns = options.reuseColumns;
   const {
     columns: sapColumns,
     debugResponses: columnDebugResponses,
-  } = await loadResultColumns(resultId);
+  } = reusedColumns
+    ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
+    : await loadResultColumns(resultId);
   const entitySetName = result.ObjectName || queryPlan.entitySetName;
   const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
     resultId,
@@ -905,7 +909,7 @@ async function executeLiveRunQuery(
 
         options.onProgress?.({
           entitySetName,
-          columns: normalizeColumns(sapColumns, progress.rows),
+          columns: reusedColumns ?? normalizeColumns(sapColumns, progress.rows),
           rows: progress.rows,
           debugResponses: partialDebugResponses,
           queryPath,
@@ -918,7 +922,7 @@ async function executeLiveRunQuery(
     },
   );
   const debugResponses = [...columnDebugResponses, ...chunkDebugResponses];
-  const columns = normalizeColumns(sapColumns, rows);
+  const columns = reusedColumns ?? normalizeColumns(sapColumns, rows);
   const pageInfo = buildPageInfo(result, rows.length);
 
   return {
@@ -970,10 +974,13 @@ async function executeLivePreviewTable(
   }
 
   const page = Math.max(1, normalizeNumber(result.Page, pageNumber));
+  const reusedColumns = options.reuseColumns;
   const {
     columns: sapColumns,
     debugResponses: columnDebugResponses,
-  } = await loadResultColumns(resultId);
+  } = reusedColumns
+    ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
+    : await loadResultColumns(resultId);
   const entitySetName = result.ObjectName || objectName;
   const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
     resultId,
@@ -987,7 +994,7 @@ async function executeLivePreviewTable(
 
         options.onProgress?.({
           entitySetName,
-          columns: normalizeColumns(sapColumns, progress.rows),
+          columns: reusedColumns ?? normalizeColumns(sapColumns, progress.rows),
           rows: progress.rows,
           debugResponses: partialDebugResponses,
           queryPath,
@@ -1004,7 +1011,7 @@ async function executeLivePreviewTable(
 
   return {
     entitySetName,
-    columns: normalizeColumns(sapColumns, rows),
+    columns: reusedColumns ?? normalizeColumns(sapColumns, rows),
     rows,
     debugResponses,
     queryPath,
