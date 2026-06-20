@@ -17,6 +17,10 @@ type MonacoEnvironment = {
 declare global {
   interface Window {
     MonacoEnvironment?: MonacoEnvironment;
+    __openSqlWorkbenchEditor?: {
+      setValue: (value: string) => void;
+      getValue: () => string;
+    };
   }
 }
 
@@ -1314,10 +1318,22 @@ export function SqlEditor({
       void updateDynamicMarkers(model);
     }
 
+    if (process.env.NODE_ENV !== "production") {
+      window.__openSqlWorkbenchEditor = {
+        setValue: (nextValue: string) => {
+          editorRef.current?.setValue(nextValue);
+        },
+        getValue: () => editorRef.current?.getValue() ?? "",
+      };
+    }
+
     return () => {
       editorDomNode?.removeEventListener("wheel", handleEditorWheel);
       disposable.dispose();
       completionProviderRef.current?.dispose();
+      if (window.__openSqlWorkbenchEditor) {
+        delete window.__openSqlWorkbenchEditor;
+      }
       if (editorRef.current) {
         editorRef.current.dispose();
       }

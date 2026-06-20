@@ -81,6 +81,7 @@ export function WorkbenchDashboard() {
     queryText,
     setQueryText,
     isRunning,
+    isLoadingSnapshot,
     activityEntries,
     resultColumns,
     resultDebugResponses,
@@ -416,6 +417,8 @@ export function WorkbenchDashboard() {
 
           <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div
+              data-testid="workbench-query-panel"
+              data-ready={isLoadingSnapshot ? "false" : "true"}
               className={hasLowerPanel ? "min-h-0 shrink-0" : "min-h-0 flex-1"}
               style={hasLowerPanel ? { height: `${queryPanelHeight}px` } : undefined}
             >
