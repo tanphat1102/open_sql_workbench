@@ -23,6 +23,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { VisualQueryBuilder } from "@/components/workbench/visual-query-builder";
 import { formatOpenSql } from "@/lib/openSqlFormatter";
 import { toast } from "@/lib/toast";
 import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
@@ -62,6 +69,7 @@ export function QueryWorkbench({
   const [templateSelectValue, setTemplateSelectValue] = useState<
     string | undefined
   >();
+
   function handleRunQuery() {
     onRunQuery();
   }
@@ -177,17 +185,39 @@ export function QueryWorkbench({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 p-0">
-          {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-          {/* @ts-ignore */}
-          <SqlEditor
-            value={queryText}
-            onChange={(v: string) => onQueryTextChange(v)}
-            entities={entities}
-            selectedEntityName={selectedEntityName}
-            height={editorHeight}
-          />
-        </div>
+        <Tabs defaultValue="sql" className="flex min-h-0 flex-1 flex-col gap-0">
+          <div className="flex h-9 items-center border-b border-border bg-white px-3">
+            <TabsList variant="line">
+              <TabsTrigger value="sql">SQL</TabsTrigger>
+              <TabsTrigger value="builder">Builder</TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent
+            value="sql"
+            className="min-h-0 flex-1 p-0 data-[state=inactive]:hidden"
+          >
+            <div className="h-full min-h-0 p-0">
+              {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+              {/* @ts-ignore */}
+              <SqlEditor
+                value={queryText}
+                onChange={(v: string) => onQueryTextChange(v)}
+                entities={entities}
+                selectedEntityName={selectedEntityName}
+                height={editorHeight}
+              />
+            </div>
+          </TabsContent>
+          <TabsContent
+            value="builder"
+            className="min-h-0 flex-1 p-0 data-[state=inactive]:hidden"
+          >
+            <VisualQueryBuilder
+              entities={entities}
+              onApplySql={onQueryTextChange}
+            />
+          </TabsContent>
+        </Tabs>
         </CardContent>
       </Card>
     </TooltipProvider>

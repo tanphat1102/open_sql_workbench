@@ -94,8 +94,17 @@ export function EntityBrowser({
               return (
                 <div
                   key={entity.name}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(
+                      "application/x-open-sql-entity",
+                      entity.name,
+                    );
+                    event.dataTransfer.setData("text/plain", entity.name);
+                    event.dataTransfer.effectAllowed = "copy";
+                  }}
                   className={cn(
-                    "flex min-h-11 items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-border hover:bg-accent",
+                    "flex min-h-11 cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition active:cursor-grabbing hover:border-border hover:bg-accent",
                     isSelected
                       ? "bg-accent text-foreground"
                       : "bg-transparent text-foreground hover:text-foreground",
