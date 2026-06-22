@@ -131,48 +131,23 @@ const baseSelectCases = [
   "SELECT * FROM SCUSTOM ORDER BY id",
 ];
 
-const topSelectCases = [
-  "SELECT TOP 1 * FROM SCARR",
-  "SELECT TOP 2 * FROM SAIRPORT",
-  "SELECT TOP 3 * FROM SAPLANE",
-  "SELECT TOP 4 * FROM SPFLI",
-  "SELECT TOP 5 * FROM SFLIGHT",
-  "SELECT TOP 6 * FROM SBOOK",
-  "SELECT TOP 7 * FROM SCUSTOM",
-  "SELECT TOP 8 * FROM SBUSPART",
-  "SELECT TOP 9 * FROM SNVOICE",
-  "SELECT TOP 10 * FROM STICKET",
-  "SELECT TOP 11 * FROM STRAVELAG",
-  "SELECT TOP 25 * FROM SCARR",
-  "SELECT TOP 25 * FROM SAIRPORT",
-  "SELECT TOP 25 * FROM SAPLANE",
-  "SELECT TOP 25 * FROM SPFLI",
-  "SELECT TOP 25 * FROM SFLIGHT",
-  "SELECT TOP 25 * FROM SBOOK",
-  "SELECT TOP 25 * FROM SCUSTOM",
-  "SELECT TOP 25 * FROM SBUSPART",
-  "SELECT TOP 25 * FROM SNVOICE",
-  "SELECT TOP 25 * FROM STICKET",
-  "SELECT TOP 25 * FROM STRAVELAG",
-];
-
 const projectionCases = [
-  "SELECT TOP 5 carrid, carrname FROM SCARR",
-  "SELECT TOP 5 currcode, url FROM SCARR",
-  "SELECT TOP 5 id, name FROM SAIRPORT",
-  "SELECT TOP 5 id, time_zone FROM SAIRPORT",
-  "SELECT TOP 5 planetype, seatsmax FROM SAPLANE",
-  "SELECT TOP 5 planetype, weight FROM SAPLANE",
-  "SELECT TOP 5 carrid, connid FROM SPFLI",
-  "SELECT TOP 5 cityfrom, cityto FROM SPFLI",
-  "SELECT TOP 5 carrid, connid FROM SFLIGHT",
-  "SELECT TOP 5 price, currency FROM SFLIGHT",
-  "SELECT TOP 5 carrid, bookid FROM SBOOK",
-  "SELECT TOP 5 customid, custtype FROM SBOOK",
-  "SELECT TOP 5 id, name FROM SCUSTOM",
-  "SELECT TOP 5 city, country FROM SCUSTOM",
-  "SELECT TOP 5 agencynum, name FROM STRAVELAG",
-  "SELECT TOP 5 city, country FROM STRAVELAG",
+  "SELECT carrid, carrname FROM SCARR",
+  "SELECT currcode, url FROM SCARR",
+  "SELECT id, name FROM SAIRPORT",
+  "SELECT id, time_zone FROM SAIRPORT",
+  "SELECT planetype, seatsmax FROM SAPLANE",
+  "SELECT planetype, weight FROM SAPLANE",
+  "SELECT carrid, connid FROM SPFLI",
+  "SELECT cityfrom, cityto FROM SPFLI",
+  "SELECT carrid, connid FROM SFLIGHT",
+  "SELECT price, currency FROM SFLIGHT",
+  "SELECT carrid, bookid FROM SBOOK",
+  "SELECT customid, custtype FROM SBOOK",
+  "SELECT id, name FROM SCUSTOM",
+  "SELECT city, country FROM SCUSTOM",
+  "SELECT agencynum, name FROM STRAVELAG",
+  "SELECT city, country FROM STRAVELAG",
 ];
 
 const equalityCases = [
@@ -257,7 +232,6 @@ const filteredOrderCases = [
 
 const selectCases = [
   ...baseSelectCases,
-  ...topSelectCases,
   ...projectionCases,
   ...equalityCases,
   ...likeCases,
@@ -328,6 +302,14 @@ const syntaxErrorCases = [
   "SELECT * SCARR",
   "SELECT * FROM",
   "SELECT carrid, FROM SCARR",
+  "SELECT TOP 1 * FROM SCARR",
+  "SELECT * FROM SCARR UP TO 1 ROWS",
+  `
+SELECT *
+FROM scarr AS a
+INNER JOIN spfli AS b
+ON a~carrid = b~carrid
+  `,
 ];
 
 test.describe("SQL Workbench - SELECT cases", () => {
