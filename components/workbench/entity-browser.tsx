@@ -16,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Eye, LoaderCircle, X } from "lucide-react";
+import { Eye, LoaderCircle, TableProperties, X } from "lucide-react";
 import { parseSapDate } from "@/lib/sapParser";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEntity } from "@/types/workbench";
@@ -27,6 +27,7 @@ type EntityBrowserProps = {
   onSelectEntity: (entityName: string) => void;
   onPreviewEntity?: (entityName: string) => void;
   previewingEntityName?: string;
+  onShowProperties?: (entityName: string) => void;
   onClose?: () => void;
 };
 
@@ -47,6 +48,7 @@ export function EntityBrowser({
   onSelectEntity,
   onPreviewEntity,
   previewingEntityName = "",
+  onShowProperties,
   onClose,
 }: EntityBrowserProps) {
   const selectedEntity =
@@ -189,6 +191,17 @@ export function EntityBrowser({
                 {formatSapDate(selectedEntity.lastSyncedRaw)}
               </div>
             </div>
+
+            {onShowProperties ? (
+              <button
+                type="button"
+                onClick={() => onShowProperties(selectedEntity.name)}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-accent hover:border-[#b8d6ef]"
+              >
+                <TableProperties className="size-3.5" />
+                View Fields
+              </button>
+            ) : null}
           </div>
         ) : null}
       </CardContent>

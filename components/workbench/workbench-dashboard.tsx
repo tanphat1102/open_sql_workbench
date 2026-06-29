@@ -19,6 +19,7 @@ import {
 import { EntityBrowser } from "@/components/workbench/entity-browser";
 import { QueryWorkbench } from "@/components/workbench/query-workbench";
 import { ResultsTable } from "@/components/workbench/results-table";
+import { TablePropertiesDialog } from "@/components/workbench/table-properties-dialog";
 import { ActionOutput } from "@/components/workbench/action-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,8 @@ export function WorkbenchDashboard() {
   const [showResults, setShowResults] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const [showFullscreenResults, setShowFullscreenResults] = useState(false);
+  const [showPropertiesDialog, setShowPropertiesDialog] = useState(false);
+  const [propertiesEntityName, setPropertiesEntityName] = useState("");
   const [objectExplorerWidth, setObjectExplorerWidth] = useState(300);
   const [queryPanelHeight, setQueryPanelHeight] = useState(260);
   const [messagesPanelHeight, setMessagesPanelHeight] = useState(150);
@@ -171,6 +174,11 @@ export function WorkbenchDashboard() {
   function executeAndShowResults() {
     setShowResults(true);
     runQuery();
+  }
+
+  function handleShowProperties(entityName: string) {
+    setPropertiesEntityName(entityName);
+    setShowPropertiesDialog(true);
   }
 
   function setResultsFullscreen(open: boolean) {
@@ -396,6 +404,7 @@ export function WorkbenchDashboard() {
                   previewTable(entityName);
                 }}
                 previewingEntityName={previewingEntityName}
+                onShowProperties={handleShowProperties}
                 onClose={() => setShowObjectExplorer(false)}
               />
             </aside>
@@ -543,6 +552,13 @@ export function WorkbenchDashboard() {
           />
         </DialogContent>
       </Dialog>
+      <TablePropertiesDialog
+        open={showPropertiesDialog}
+        onOpenChange={setShowPropertiesDialog}
+        entityName={propertiesEntityName}
+        entityType={selectedEntity?.tags[1]}
+        entityDescription={selectedEntity?.description}
+      />
     </main>
   );
 }
