@@ -20,6 +20,9 @@ import {
   Maximize2,
   Minimize2,
   X,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 
 import {
@@ -168,26 +171,104 @@ export function ResultsTable({
   const [viewportHeight, setViewportHeight] = useState(480);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const headerDragRef = useRef<HeaderDragState | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const visibleColumns = useMemo(
     () => (columns.length > 0 ? columns : buildFallbackColumns(rows)),
     [columns, rows],
   );
-  const visibleRowEntries = useMemo<VisibleRowEntry[]>(() => {
-    const normalizedSearch = searchText.trim().toLowerCase();
-    const rowEntries = rows.map((row, pageIndex) => ({ row, pageIndex }));
 
-    if (!normalizedSearch) {
-      return rowEntries;
+  function handleSort(key: string) {
+    let direction: "asc" | "desc" = "asc";
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "desc") {
+      setSortConfig(null);
+      return;
+    }
+    setSortConfig({ key, direction });
+  }
+  const visibleRowEntries = useMemo<VisibleRowEntry[]>(() => {
+    let rowEntries = rows.map((row, pageIndex) => ({ row, pageIndex }));
+
+    const normalizedSearch = searchText.trim().toLowerCase();
+    if (normalizedSearch) {
+      rowEntries = rowEntries.filter(({ row }) =>
+        visibleColumns.some((column) =>
+          formatCellValue(row[column.key])
+            .toLowerCase()
+            .includes(normalizedSearch),
+        ),
+      );
     }
 
-    return rowEntries.filter(({ row }) =>
-      visibleColumns.some((column) =>
-        formatCellValue(row[column.key])
-          .toLowerCase()
-          .includes(normalizedSearch),
-      ),
-    );
-  }, [rows, searchText, visibleColumns]);
+    Object.entries(columnFilters).forEach(([colKey, filterValue]) => {
+      const normalizedFilter = filterValue.trim().toLowerCase();
+      if (normalizedFilter) {
+        rowEntries = rowEntries.filter(({ row }) => {
+          const val = row[colKey];
+          
+          if (typeof val === "boolean") {
+            return normalizedFilter === "all" ? true : normalizedFilter === "true" ? val : !val;
+          }
+
+          if (typeof val === "number" || (typeof val === "string" && !isNaN(Number(val)) && val.trim() !== "")) {
+             const numVal = Number(val);
+             if (normalizedFilter.startsWith(">=")) return numVal >= parseFloat(normalizedFilter.slice(2));
+             if (normalizedFilter.startsWith("<=")) return numVal <= parseFloat(normalizedFilter.slice(2));
+             if (normalizedFilter.startsWith(">")) return numVal > parseFloat(normalizedFilter.slice(1));
+             if (normalizedFilter.startsWith("<")) return numVal < parseFloat(normalizedFilter.slice(1));
+             if (normalizedFilter.startsWith("=")) return numVal === parseFloat(normalizedFilter.slice(1));
+          }
+
+          const strVal = formatCellValue(val).toLowerCase();
+          return strVal.includes(normalizedFilter);
+        });
+      }
+    });
+
+    if (sortConfig) {
+      rowEntries.sort((a, b) => {
+        const valA = a.row[sortConfig.key];
+        const valB = b.row[sortConfig.key];
+        
+        let comparison = 0;
+        if (valA === null || valA === undefined) comparison = 1;
+        else if (valB === null || valB === undefined) comparison = -1;
+        else if (typeof valA === "number" && typeof valB === "number") {
+          comparison = valA - valB;
+        } else if (typeof valA === "boolean" && typeof valB === "boolean") {
+          comparison = valA === valB ? 0 : valA ? -1 : 1;
+        } else {
+          const strA = String(valA);
+          const strB = String(valB);
+          
+          if (strA.startsWith("/Date(") && strB.startsWith("/Date(")) {
+             const dateA = parseSapDate(strA);
+             const dateB = parseSapDate(strB);
+             if (dateA && dateB) {
+                comparison = dateA.getTime() - dateB.getTime();
+             } else {
+                comparison = strA.localeCompare(strB);
+             }
+          } else {
+             // Try numeric sort for numeric strings
+             const numA = Number(strA);
+             const numB = Number(strB);
+             if (!isNaN(numA) && !isNaN(numB) && strA.trim() !== "" && strB.trim() !== "") {
+                comparison = numA - numB;
+             } else {
+                comparison = strA.localeCompare(strB);
+             }
+          }
+        }
+        return sortConfig.direction === "asc" ? comparison : -comparison;
+      });
+    }
+
+    return rowEntries;
+  }, [rows, searchText, visibleColumns, columnFilters, sortConfig]);
   const currentPage = Math.max(0, pageInfo.page);
   const totalPages = Math.max(0, pageInfo.totalPages);
   const pageSize = Math.max(0, pageInfo.pageSize);
@@ -512,7 +593,7 @@ export function ResultsTable({
                   {visibleColumns.map((column) => (
                     <TableHead
                       key={column.key}
-                      className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
+                      className="sticky top-0 w-[168px] border-b border-border bg-accent p-0 font-semibold text-primary align-top"
                       title={[
                         column.fieldName,
                         column.abapType,
@@ -524,12 +605,59 @@ export function ResultsTable({
                         .filter(Boolean)
                         .join(" | ")}
                     >
-                      {column.label || column.fieldName}
-                      {column.isKey ? (
-                        <span className="ml-2 rounded border border-border px-1 text-[10px] font-medium">
-                          KEY
-                        </span>
-                      ) : null}
+                      <div className="flex h-full flex-col">
+                        <div 
+                          className="flex flex-1 items-center justify-between cursor-pointer px-3 pt-2 pb-1 hover:bg-black/5"
+                          onClick={() => handleSort(column.key)}
+                        >
+                          <span className="truncate text-xs">
+                            {column.label || column.fieldName}
+                            {column.isKey ? (
+                              <span className="ml-2 rounded border border-border px-1 text-[10px] font-medium">
+                                KEY
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="ml-2 shrink-0">
+                            {sortConfig?.key === column.key ? (
+                              sortConfig.direction === "asc" ? (
+                                <ArrowUp className="size-3" />
+                              ) : (
+                                <ArrowDown className="size-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="size-3 opacity-30" />
+                            )}
+                          </span>
+                        </div>
+                        <div className="px-2 pb-2 mt-auto">
+                          {column.abapType === 'Edm.Boolean' ? (
+                            <select
+                              className="w-full rounded border border-border px-1.5 py-1 text-xs font-normal text-foreground outline-none focus:border-primary"
+                              value={columnFilters[column.key] || "all"}
+                              onChange={(e) => setColumnFilters({...columnFilters, [column.key]: e.target.value})}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="all">All</option>
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              className="w-full rounded border border-border px-1.5 py-1 text-xs font-normal text-foreground bg-white outline-none focus:border-primary"
+                              placeholder={
+                                column.abapType?.includes('Int') || column.abapType?.includes('Decimal') 
+                                ? ">, <, =, >=" 
+                                : "Filter..."
+                              }
+                              value={columnFilters[column.key] || ""}
+                              onChange={(e) => setColumnFilters({...columnFilters, [column.key]: e.target.value})}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          )}
+                        </div>
+                      </div>
                     </TableHead>
                   ))}
                 </TableRow>
