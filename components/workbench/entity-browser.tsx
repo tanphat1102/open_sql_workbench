@@ -28,6 +28,7 @@ type EntityBrowserProps = {
   onPreviewEntity?: (entityName: string) => void;
   previewingEntityName?: string;
   onShowProperties?: (entityName: string) => void;
+  isLoading?: boolean;
   onClose?: () => void;
 };
 
@@ -49,6 +50,7 @@ export function EntityBrowser({
   onPreviewEntity,
   previewingEntityName = "",
   onShowProperties,
+  isLoading = false,
   onClose,
 }: EntityBrowserProps) {
   const selectedEntity =
@@ -90,74 +92,104 @@ export function EntityBrowser({
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1 p-2">
-            {entities.map((entity) => {
-              const isSelected = entity.name === selectedEntityName;
-
-              return (
-                <div
-                  key={entity.name}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData(
-                      "application/x-open-sql-entity",
-                      entity.name,
-                    );
-                    event.dataTransfer.setData("text/plain", entity.name);
-                    event.dataTransfer.effectAllowed = "copy";
-                  }}
-                  className={cn(
-                    "flex min-h-11 cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition active:cursor-grabbing hover:border-border hover:bg-accent",
-                    isSelected
-                      ? "bg-accent text-foreground"
-                      : "bg-transparent text-foreground hover:text-foreground",
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelectEntity(entity.name)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            {isLoading
+              ? Array.from({ length: 10 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex min-h-11 items-center gap-2 rounded-md border border-transparent px-2 py-1.5"
                   >
-                    <div className="truncate font-medium">{entity.name}</div>
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                      {entity.recordCount > 0
-                        ? entity.recordCount
-                        : (entity.tags[1] ?? "Object")}
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-accent" />
+                    <span className="ml-auto shrink-0">
+                      <div className="h-3 w-12 animate-pulse rounded bg-accent" />
                     </span>
-                  </button>
-                  {onPreviewEntity ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={() => onPreviewEntity(entity.name)}
-                          disabled={previewingEntityName === entity.name}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
-                          aria-label={`Preview ${entity.name}`}
-                        >
-                          {previewingEntityName === entity.name ? (
-                            <LoaderCircle className="size-3.5 animate-spin" />
-                          ) : (
-                            <Eye className="size-3.5" />
-                          )}
-                          {previewingEntityName === entity.name
-                            ? "Loading"
-                            : "Preview"}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Preview top rows from {entity.name}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                </div>
-              );
-            })}
+                    <div className="h-7 w-16 animate-pulse rounded-md bg-accent" />
+                  </div>
+                ))
+              : entities.map((entity) => {
+                  const isSelected = entity.name === selectedEntityName;
+
+                  return (
+                    <div
+                      key={entity.name}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(
+                          "application/x-open-sql-entity",
+                          entity.name,
+                        );
+                        event.dataTransfer.setData("text/plain", entity.name);
+                        event.dataTransfer.effectAllowed = "copy";
+                      }}
+                      className={cn(
+                        "flex min-h-11 cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition active:cursor-grabbing hover:border-border hover:bg-accent",
+                        isSelected
+                          ? "bg-accent text-foreground"
+                          : "bg-transparent text-foreground hover:text-foreground",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSelectEntity(entity.name)}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      >
+                        <div className="truncate font-medium">
+                          {entity.name}
+                        </div>
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                          {entity.recordCount > 0
+                            ? entity.recordCount
+                            : (entity.tags[1] ?? "Object")}
+                        </span>
+                      </button>
+                      {onPreviewEntity ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => onPreviewEntity(entity.name)}
+                              disabled={previewingEntityName === entity.name}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+                              aria-label={`Preview ${entity.name}`}
+                            >
+                              {previewingEntityName === entity.name ? (
+                                <LoaderCircle className="size-3.5 animate-spin" />
+                              ) : (
+                                <Eye className="size-3.5" />
+                              )}
+                              {previewingEntityName === entity.name
+                                ? "Loading"
+                                : "Preview"}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Preview top rows from {entity.name}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                  );
+                })}
           </div>
         </ScrollArea>
 
         <Separator className="bg-border" />
 
-        {selectedEntity ? (
+        {isLoading ? (
+          <div className="space-y-3 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1">
+                <div className="h-3 w-20 animate-pulse rounded bg-accent" />
+                <div className="mt-1 h-4 w-32 animate-pulse rounded bg-accent" />
+              </div>
+              <div className="h-5 w-20 animate-pulse rounded-full bg-accent" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-3/4 animate-pulse rounded bg-accent" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-accent" />
+            </div>
+            <div className="h-8 w-full animate-pulse rounded-md bg-accent" />
+          </div>
+        ) : selectedEntity ? (
           <div className="space-y-3 p-3">
             <div className="flex items-center justify-between gap-3">
               <div>

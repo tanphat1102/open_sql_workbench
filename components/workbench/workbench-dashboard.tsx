@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent,
-} from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -71,8 +66,9 @@ export function WorkbenchDashboard() {
   const [objectExplorerWidth, setObjectExplorerWidth] = useState(300);
   const [queryPanelHeight, setQueryPanelHeight] = useState(260);
   const [messagesPanelHeight, setMessagesPanelHeight] = useState(150);
-  const [activeResize, setActiveResize] =
-    useState<ResizeDragState["type"] | null>(null);
+  const [activeResize, setActiveResize] = useState<
+    ResizeDragState["type"] | null
+  >(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const lowerStackRef = useRef<HTMLDivElement | null>(null);
   const resizeDragRef = useRef<ResizeDragState | null>(null);
@@ -245,7 +241,11 @@ export function WorkbenchDashboard() {
 
     if (dragState.type === "objectExplorer") {
       setObjectExplorerWidth(
-        clamp(dragState.startWidth + event.clientX - dragState.startX, 220, 560),
+        clamp(
+          dragState.startWidth + event.clientX - dragState.startX,
+          220,
+          560,
+        ),
       );
     }
 
@@ -405,6 +405,7 @@ export function WorkbenchDashboard() {
                 }}
                 previewingEntityName={previewingEntityName}
                 onShowProperties={handleShowProperties}
+                isLoading={isLoadingSnapshot}
                 onClose={() => setShowObjectExplorer(false)}
               />
             </aside>
@@ -424,12 +425,17 @@ export function WorkbenchDashboard() {
             </div>
           ) : null}
 
-          <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            ref={workspaceRef}
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+          >
             <div
               data-testid="workbench-query-panel"
               data-ready={isLoadingSnapshot ? "false" : "true"}
               className={hasLowerPanel ? "min-h-0 shrink-0" : "min-h-0 flex-1"}
-              style={hasLowerPanel ? { height: `${queryPanelHeight}px` } : undefined}
+              style={
+                hasLowerPanel ? { height: `${queryPanelHeight}px` } : undefined
+              }
             >
               <QueryWorkbench
                 selectedEntityName={selectedEntityName}
@@ -461,10 +467,7 @@ export function WorkbenchDashboard() {
             ) : null}
 
             {showResults && showMessages ? (
-              <div
-                ref={lowerStackRef}
-                className="flex min-h-0 flex-1 flex-col"
-              >
+              <div ref={lowerStackRef} className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1">
                   <ResultsTable
                     entityName={selectedEntity?.name ?? selectedEntityName}
