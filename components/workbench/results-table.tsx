@@ -285,7 +285,9 @@ export function ResultsTable({
     [visibleRowEntries],
   );
   const pageEnd =
-    pageStart > 0 ? pageStart + Math.max(visibleRows.length, returnedRows) - 1 : 0;
+    pageStart > 0
+      ? pageStart + Math.max(visibleRows.length, returnedRows) - 1
+      : 0;
   const pageRows = visibleRowEntries;
   const virtualStartIndex = Math.max(
     0,
@@ -303,9 +305,9 @@ export function ResultsTable({
   const canGoPrevious = Boolean(onPageChange && currentPage > 1);
   const canGoNext = Boolean(
     onPageChange &&
-      currentPage > 0 &&
-      totalPages > 0 &&
-      currentPage < totalPages,
+    currentPage > 0 &&
+    totalPages > 0 &&
+    currentPage < totalPages,
   );
   const tableMinWidth = Math.max(visibleColumns.length * 168 + 56, 720);
 
@@ -428,468 +430,493 @@ export function ResultsTable({
   return (
     <TooltipProvider>
       <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
-      <CardHeader className="border-b border-border px-3 py-2">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <CardTitle className="text-base text-foreground">Results</CardTitle>
-            <CardDescription className="text-xs">
-              {entityName} | Page {currentPage || "-"} of {totalPages || "-"} |{" "}
-              {returnedRows} of {totalRows} rows
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  disabled={debugResponses.length === 0}
-                  onClick={() => {
-                    setSelectedDebugIndex(0);
-                    setDebugOpen(true);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <FileJson className="size-4" />
-                  SAP responses
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Inspect raw SAP ColumnSet and PageChunk responses.
-              </TooltipContent>
-            </Tooltip>
-            <input
-              placeholder="Search"
-              className="rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
-              value={searchText}
-              onChange={(event) => handleSearchChange(event.target.value)}
-            />
-            {onFullscreenChange ? (
+        <CardHeader className="border-b border-border px-3 py-2">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="text-base text-foreground">
+                Results
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {entityName} | Page {currentPage || "-"} of {totalPages || "-"}{" "}
+                | {returnedRows} of {totalRows} rows
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => onFullscreenChange(!isFullscreen)}
-                    className="rounded-md border border-border bg-white p-2 text-primary transition hover:bg-accent"
-                    aria-label={
-                      isFullscreen ? "Exit fullscreen" : "Open fullscreen"
-                    }
+                    disabled={debugResponses.length === 0}
+                    onClick={() => {
+                      setSelectedDebugIndex(0);
+                      setDebugOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                   >
-                    {isFullscreen ? (
-                      <Minimize2 className="size-4" />
-                    ) : (
-                      <Maximize2 className="size-4" />
-                    )}
+                    <FileJson className="size-4" />
+                    SAP responses
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                  Inspect raw SAP ColumnSet and PageChunk responses.
                 </TooltipContent>
               </Tooltip>
-            ) : null}
-            <div className="relative">
-              <button
-                type="button"
-                disabled={visibleRows.length === 0 || downloadingFormat !== null}
-                onClick={() => setDownloadOpen((current) => !current)}
-                className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-              >
-                {downloadingFormat ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <Download className="size-4" />
-                )}
-                {downloadingFormat ? "Exporting..." : "Download"}
-              </button>
-              {downloadOpen ? (
-                <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border border-border bg-white p-1 shadow-md">
-                  <button
-                    type="button"
-                    disabled={downloadingFormat !== null}
-                    onClick={() => void handleDownload({ format: "xlsx" })}
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    {downloadingFormat === "xlsx" ? (
-                      <LoaderCircle className="size-4 animate-spin text-primary" />
-                    ) : (
-                      <FileSpreadsheet className="size-4 text-primary" />
-                    )}
-                    Excel workbook
-                  </button>
-                  <button
-                    type="button"
-                    disabled={downloadingFormat !== null}
-                    onClick={() => void handleDownload({ format: "csv" })}
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    {downloadingFormat === "csv" ? (
-                      <LoaderCircle className="size-4 animate-spin text-primary" />
-                    ) : (
-                      <Download className="size-4 text-primary" />
-                    )}
-                    CSV
-                  </button>
-                </div>
+              <input
+                placeholder="Search"
+                className="rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
+                value={searchText}
+                onChange={(event) => handleSearchChange(event.target.value)}
+              />
+              {onFullscreenChange ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => onFullscreenChange(!isFullscreen)}
+                      className="rounded-md border border-border bg-white p-2 text-primary transition hover:bg-accent"
+                      aria-label={
+                        isFullscreen ? "Exit fullscreen" : "Open fullscreen"
+                      }
+                    >
+                      {isFullscreen ? (
+                        <Minimize2 className="size-4" />
+                      ) : (
+                        <Maximize2 className="size-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isFullscreen
+                      ? "Exit fullscreen"
+                      : "Open fullscreen preview"}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={
+                    visibleRows.length === 0 || downloadingFormat !== null
+                  }
+                  onClick={() => setDownloadOpen((current) => !current)}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {downloadingFormat ? (
+                    <LoaderCircle className="size-4 animate-spin" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                  {downloadingFormat ? "Exporting..." : "Download"}
+                </button>
+                {downloadOpen ? (
+                  <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border border-border bg-white p-1 shadow-md">
+                    <button
+                      type="button"
+                      disabled={downloadingFormat !== null}
+                      onClick={() => void handleDownload({ format: "xlsx" })}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      {downloadingFormat === "xlsx" ? (
+                        <LoaderCircle className="size-4 animate-spin text-primary" />
+                      ) : (
+                        <FileSpreadsheet className="size-4 text-primary" />
+                      )}
+                      Excel workbook
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloadingFormat !== null}
+                      onClick={() => void handleDownload({ format: "csv" })}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      {downloadingFormat === "csv" ? (
+                        <LoaderCircle className="size-4 animate-spin text-primary" />
+                      ) : (
+                        <Download className="size-4 text-primary" />
+                      )}
+                      CSV
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              {onClose ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="rounded-md border border-transparent p-2 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+                      aria-label="Hide Results"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Hide Results</TooltipContent>
+                </Tooltip>
               ) : null}
             </div>
-            {onClose ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-md border border-transparent p-2 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
-                    aria-label="Hide Results"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Hide Results</TooltipContent>
-              </Tooltip>
-            ) : null}
           </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      <CardContent className="relative min-h-0 flex-1 p-0">
-        {isLoading ? (
-          <div className="pointer-events-none absolute right-3 top-3 z-10">
-            <div className="flex items-center gap-2 rounded-md border border-border bg-white/95 px-3 py-2 text-sm text-primary shadow-sm">
-              <LoaderCircle className="size-4 animate-spin" />
-              Loading results
-            </div>
-          </div>
-        ) : null}
-        {visibleRows.length === 0 ? (
-          <div className="m-3 rounded-lg border border-dashed border-[#b8d6ef] bg-accent p-8 text-center text-sm text-muted-foreground">
-            {rows.length === 0
-              ? "No rows loaded yet. Run a query or switch to another entity."
-              : "No rows match the current search."}
-          </div>
-        ) : (
-          <div
-            ref={tableScrollRef}
-            className="h-full min-w-0 overflow-auto bg-white"
-            onScroll={handleTableScroll}
-          >
-            <table
-              className="w-full table-fixed caption-bottom text-sm"
-              style={{ minWidth: `${tableMinWidth}px` }}
-            >
-              <TableHeader
-                className={
-                  isHeaderDragging
-                    ? "cursor-grabbing select-none"
-                    : "cursor-grab select-none"
-                }
-                onPointerDown={handleHeaderPointerDown}
-                onPointerMove={handleHeaderPointerMove}
-                onPointerUp={handleHeaderPointerEnd}
-                onPointerCancel={handleHeaderPointerEnd}
+        <CardContent className="relative min-h-0 flex-1 p-0">
+          {isLoading && rows.length === 0 ? (
+            <div className="h-full min-w-0 overflow-auto bg-white">
+              <table
+                className="w-full table-fixed caption-bottom text-sm"
+                style={{
+                  minWidth: `${Math.max(columns.length * 168 + 56, 720)}px`,
+                }}
               >
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="sticky left-0 top-0 z-20 w-14 border-b border-r border-border bg-accent px-3 py-2 text-xs font-semibold text-primary">
-                    #
-                  </TableHead>
-                  {visibleColumns.map((column) => (
-                    <TableHead
-                      key={column.key}
-                      className="sticky top-0 w-[168px] border-b border-border bg-accent p-0 font-semibold text-primary align-top"
-                      title={[
-                        column.fieldName,
-                        column.abapType,
-                        column.length ? `Length ${column.length}` : undefined,
-                        column.decimals
-                          ? `Decimals ${column.decimals}`
-                          : undefined,
-                      ]
-                        .filter(Boolean)
-                        .join(" | ")}
-                    >
-                      <div className="flex h-full flex-col">
-                        <div 
-                          className="flex flex-1 items-center justify-between cursor-pointer px-3 pt-2 pb-1 hover:bg-black/5"
-                          onClick={() => handleSort(column.key)}
-                        >
-                          <span className="truncate text-xs">
-                            {column.label || column.fieldName}
-                            {column.isKey ? (
-                              <span className="ml-2 rounded border border-border px-1 text-[10px] font-medium">
-                                KEY
-                              </span>
-                            ) : null}
-                          </span>
-                          <span className="ml-2 shrink-0">
-                            {sortConfig?.key === column.key ? (
-                              sortConfig.direction === "asc" ? (
-                                <ArrowUp className="size-3" />
-                              ) : (
-                                <ArrowDown className="size-3" />
-                              )
-                            ) : (
-                              <ArrowUpDown className="size-3 opacity-30" />
-                            )}
-                          </span>
-                        </div>
-                        <div className="px-2 pb-2 mt-auto">
-                          {column.abapType === 'Edm.Boolean' ? (
-                            <select
-                              className="w-full rounded border border-border px-1.5 py-1 text-xs font-normal text-foreground outline-none focus:border-primary"
-                              value={columnFilters[column.key] || "all"}
-                              onChange={(e) => setColumnFilters({...columnFilters, [column.key]: e.target.value})}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <option value="all">All</option>
-                              <option value="true">Yes</option>
-                              <option value="false">No</option>
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              className="w-full rounded border border-border px-1.5 py-1 text-xs font-normal text-foreground bg-white outline-none focus:border-primary"
-                              placeholder={
-                                column.abapType?.includes('Int') || column.abapType?.includes('Decimal') 
-                                ? ">, <, =, >=" 
-                                : "Filter..."
-                              }
-                              value={columnFilters[column.key] || ""}
-                              onChange={(e) => setColumnFilters({...columnFilters, [column.key]: e.target.value})}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          )}
-                        </div>
-                      </div>
+                <TableHeader>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="sticky left-0 top-0 z-20 w-14 border-b border-r border-border bg-accent px-3 py-2 text-xs font-semibold text-primary">
+                      #
                     </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topSpacerHeight > 0 ? (
-                  <TableRow aria-hidden="true" className="border-0">
-                    <TableCell
-                      colSpan={visibleColumns.length + 1}
-                      className="p-0"
-                      style={{ height: `${topSpacerHeight}px` }}
-                    />
+                    {columns.length > 0
+                      ? columns.map((c) => (
+                          <TableHead
+                            key={c.key}
+                            className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
+                          >
+                            {c.label || c.fieldName}
+                          </TableHead>
+                        ))
+                      : Array.from({ length: 4 }).map((_, i) => (
+                          <TableHead
+                            key={i}
+                            className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
+                          >
+                            <div className="h-3 w-24 animate-pulse rounded bg-accent" />
+                          </TableHead>
+                        ))}
                   </TableRow>
-                ) : null}
-                {virtualRows.map(({ row, pageIndex }, rowIndex) => {
-                  const rowNumber =
-                    pageStart > 0 ? pageStart + pageIndex : pageIndex + 1;
-
-                  return (
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 15 }).map((_, i) => (
                     <TableRow
-                      key={`${entityName}-${currentPage}-${virtualStartIndex + rowIndex}`}
-                      className="border-border hover:bg-accent/40"
+                      key={i}
+                      className="border-border hover:bg-transparent"
                     >
-                      <TableCell className="sticky left-0 z-10 w-14 border-r border-border bg-white px-3 py-2 text-right text-xs tabular-nums text-muted-foreground">
-                        {rowNumber}
+                      <TableCell className="sticky left-0 z-10 w-14 border-r border-border bg-white px-3 py-2 text-right">
+                        <div className="h-3 w-6 animate-pulse rounded bg-accent ml-auto" />
                       </TableCell>
-                      {visibleColumns.map((column) => (
+                      {(columns.length > 0
+                        ? columns
+                        : Array.from({ length: 4 }, (_, k) => k)
+                      ).map((col, j) => (
                         <TableCell
-                          key={column.key}
-                          className="w-[168px] truncate px-3 py-2 text-foreground"
-                          title={formatCellValue(row[column.key])}
+                          key={
+                            typeof col === "number"
+                              ? col
+                              : (col as WorkbenchColumn).key
+                          }
+                          className="px-3 py-2"
                         >
-                          {formatCellValue(row[column.key])}
+                          <div
+                            className="h-3 animate-pulse rounded bg-accent"
+                            style={{
+                              width: `${40 + Math.floor((i * 7 + j * 13) % 60)}%`,
+                            }}
+                          />
                         </TableCell>
                       ))}
                     </TableRow>
-                  );
-                })}
-                {bottomSpacerHeight > 0 ? (
-                  <TableRow aria-hidden="true" className="border-0">
-                    <TableCell
-                      colSpan={visibleColumns.length + 1}
-                      className="p-0"
-                      style={{ height: `${bottomSpacerHeight}px` }}
-                    />
+                  ))}
+                </TableBody>
+              </table>
+            </div>
+          ) : visibleRows.length === 0 ? (
+            <div className="m-3 rounded-lg border border-dashed border-[#b8d6ef] bg-accent p-8 text-center text-sm text-muted-foreground">
+              {rows.length === 0
+                ? "No rows loaded yet. Run a query or switch to another entity."
+                : "No rows match the current search."}
+            </div>
+          ) : (
+            <div
+              ref={tableScrollRef}
+              className="h-full min-w-0 overflow-auto bg-white"
+              onScroll={handleTableScroll}
+            >
+              {isLoading ? (
+                <div className="pointer-events-none sticky left-0 z-10 flex justify-center">
+                  <div className="absolute top-2 flex items-center gap-2 rounded-md border border-border bg-white/95 px-3 py-1.5 text-xs text-primary shadow-sm">
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    Loading
+                  </div>
+                </div>
+              ) : null}
+              <table
+                className="w-full table-fixed caption-bottom text-sm"
+                style={{ minWidth: `${tableMinWidth}px` }}
+              >
+                <TableHeader
+                  className={
+                    isHeaderDragging
+                      ? "cursor-grabbing select-none"
+                      : "cursor-grab select-none"
+                  }
+                  onPointerDown={handleHeaderPointerDown}
+                  onPointerMove={handleHeaderPointerMove}
+                  onPointerUp={handleHeaderPointerEnd}
+                  onPointerCancel={handleHeaderPointerEnd}
+                >
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="sticky left-0 top-0 z-20 w-14 border-b border-r border-border bg-accent px-3 py-2 text-xs font-semibold text-primary">
+                      #
+                    </TableHead>
+                    {visibleColumns.map((column) => (
+                      <TableHead
+                        key={column.key}
+                        className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
+                        title={[
+                          column.fieldName,
+                          column.abapType,
+                          column.length ? `Length ${column.length}` : undefined,
+                          column.decimals
+                            ? `Decimals ${column.decimals}`
+                            : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(" | ")}
+                      >
+                        {column.label || column.fieldName}
+                        {column.isKey ? (
+                          <span className="ml-2 rounded border border-border px-1 text-[10px] font-medium">
+                            KEY
+                          </span>
+                        ) : null}
+                      </TableHead>
+                    ))}
                   </TableRow>
-                ) : null}
-              </TableBody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-      <div className="flex flex-col gap-2 border-t border-border px-3 py-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <div>
-          {visibleRows.length === 0
-            ? "No rows"
-            : searchText.trim()
-              ? `Filtered ${visibleRows.length} of ${rows.length} rows on page ${currentPage || "-"}`
-              : `Showing ${pageStart}-${pageEnd} of ${totalRows} rows`}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="text-xs">
-            Page {currentPage || "-"} of {totalPages || "-"} | Page size{" "}
-            {pageSize || "-"}
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={!canGoPrevious || isLoading}
-              onClick={() => onPageChange?.(1)}
-              className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-              aria-label="First page"
-            >
-              <ChevronsLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={!canGoPrevious || isLoading}
-              onClick={() => onPageChange?.(currentPage - 1)}
-              className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={!canGoNext || isLoading}
-              onClick={() => onPageChange?.(currentPage + 1)}
-              className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-              aria-label="Next page"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={!canGoNext || isLoading}
-              onClick={() => onPageChange?.(totalPages)}
-              className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-              aria-label="Last page"
-            >
-              <ChevronsRight className="size-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+                </TableHeader>
+                <TableBody>
+                  {topSpacerHeight > 0 ? (
+                    <TableRow aria-hidden="true" className="border-0">
+                      <TableCell
+                        colSpan={visibleColumns.length + 1}
+                        className="p-0"
+                        style={{ height: `${topSpacerHeight}px` }}
+                      />
+                    </TableRow>
+                  ) : null}
+                  {virtualRows.map(({ row, pageIndex }, rowIndex) => {
+                    const rowNumber =
+                      pageStart > 0 ? pageStart + pageIndex : pageIndex + 1;
 
-      {debugOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-lg border border-border bg-white shadow-xl">
-            <div className="flex items-start justify-between gap-3 border-b border-border p-4">
-              <div>
-                <div className="text-base font-semibold text-foreground">
-                  SAP column and chunk responses
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  Raw response.text() captured by the FE through /api/sap.
-                </div>
-              </div>
+                    return (
+                      <TableRow
+                        key={`${entityName}-${currentPage}-${virtualStartIndex + rowIndex}`}
+                        className="border-border hover:bg-accent/40"
+                      >
+                        <TableCell className="sticky left-0 z-10 w-14 border-r border-border bg-white px-3 py-2 text-right text-xs tabular-nums text-muted-foreground">
+                          {rowNumber}
+                        </TableCell>
+                        {visibleColumns.map((column) => (
+                          <TableCell
+                            key={column.key}
+                            className="w-[168px] truncate px-3 py-2 text-foreground"
+                            title={formatCellValue(row[column.key])}
+                          >
+                            {formatCellValue(row[column.key])}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })}
+                  {bottomSpacerHeight > 0 ? (
+                    <TableRow aria-hidden="true" className="border-0">
+                      <TableCell
+                        colSpan={visibleColumns.length + 1}
+                        className="p-0"
+                        style={{ height: `${bottomSpacerHeight}px` }}
+                      />
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+        <div className="flex flex-col gap-2 border-t border-border px-3 py-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+          <div>
+            {visibleRows.length === 0
+              ? "No rows"
+              : searchText.trim()
+                ? `Filtered ${visibleRows.length} of ${rows.length} rows on page ${currentPage || "-"}`
+                : `Showing ${pageStart}-${pageEnd} of ${totalRows} rows`}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-xs">
+              Page {currentPage || "-"} of {totalPages || "-"} | Page size{" "}
+              {pageSize || "-"}
+            </div>
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setDebugOpen(false)}
-                className="rounded-md border border-border px-3 py-1.5 text-sm text-primary hover:bg-accent"
+                disabled={!canGoPrevious || isLoading}
+                onClick={() => onPageChange?.(1)}
+                className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+                aria-label="First page"
               >
-                Close
+                <ChevronsLeft className="size-4" />
               </button>
-            </div>
-
-            <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="min-h-0 border-b border-border p-3 md:border-r md:border-b-0">
-                <div className="space-y-2">
-                  {debugResponses.map((response, index) => (
-                    <button
-                      key={`${response.label}-${index}`}
-                      type="button"
-                      onClick={() => setSelectedDebugIndex(index)}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                        index === selectedDebugIndex
-                          ? "border-primary bg-accent text-primary"
-                          : "border-border bg-white text-foreground hover:bg-accent"
-                      }`}
-                    >
-                      <div className="font-medium">{response.label}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {response.summary}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="min-h-0 space-y-3 overflow-auto p-4">
-                {selectedDebugResponse ? (
-                  <>
-                    <div className="grid gap-2 text-sm md:grid-cols-5">
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          HTTP
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.status}
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          Browser Content-Length
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.contentLength || "-"}
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          SAP Content-Length
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.upstreamContentLength || "-"}
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          Received
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.receivedBytes} bytes /{" "}
-                          {selectedDebugResponse.receivedChars} chars
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          Proxy bytes
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.proxyBytes || "-"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-2 text-sm md:grid-cols-2">
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          Summary
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.summary}
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border bg-accent p-3">
-                        <div className="text-xs text-muted-foreground">
-                          SAP Content-Type
-                        </div>
-                        <div className="font-medium">
-                          {selectedDebugResponse.upstreamContentType || "-"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-md border border-border bg-accent p-3 font-mono text-xs text-muted-foreground">
-                      {selectedDebugResponse.path}
-                    </div>
-
-                    <textarea
-                      readOnly
-                      value={selectedDebugResponse.body}
-                      className="h-[52vh] w-full resize-none rounded-md border border-border bg-white p-3 font-mono text-xs text-foreground outline-none"
-                    />
-                  </>
-                ) : null}
-              </div>
+              <button
+                type="button"
+                disabled={!canGoPrevious || isLoading}
+                onClick={() => onPageChange?.(currentPage - 1)}
+                className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                disabled={!canGoNext || isLoading}
+                onClick={() => onPageChange?.(currentPage + 1)}
+                className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+                aria-label="Next page"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+              <button
+                type="button"
+                disabled={!canGoNext || isLoading}
+                onClick={() => onPageChange?.(totalPages)}
+                className="rounded-md border border-border bg-white p-1.5 text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+                aria-label="Last page"
+              >
+                <ChevronsRight className="size-4" />
+              </button>
             </div>
           </div>
         </div>
-      ) : null}
+
+        {debugOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-lg border border-border bg-white shadow-xl">
+              <div className="flex items-start justify-between gap-3 border-b border-border p-4">
+                <div>
+                  <div className="text-base font-semibold text-foreground">
+                    SAP column and chunk responses
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Raw response.text() captured by the FE through /api/sap.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDebugOpen(false)}
+                  className="rounded-md border border-border px-3 py-1.5 text-sm text-primary hover:bg-accent"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="min-h-0 border-b border-border p-3 md:border-r md:border-b-0">
+                  <div className="space-y-2">
+                    {debugResponses.map((response, index) => (
+                      <button
+                        key={`${response.label}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedDebugIndex(index)}
+                        className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                          index === selectedDebugIndex
+                            ? "border-primary bg-accent text-primary"
+                            : "border-border bg-white text-foreground hover:bg-accent"
+                        }`}
+                      >
+                        <div className="font-medium">{response.label}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {response.summary}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="min-h-0 space-y-3 overflow-auto p-4">
+                  {selectedDebugResponse ? (
+                    <>
+                      <div className="grid gap-2 text-sm md:grid-cols-5">
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            HTTP
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.status}
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            Browser Content-Length
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.contentLength || "-"}
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            SAP Content-Length
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.upstreamContentLength || "-"}
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            Received
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.receivedBytes} bytes /{" "}
+                            {selectedDebugResponse.receivedChars} chars
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            Proxy bytes
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.proxyBytes || "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 text-sm md:grid-cols-2">
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            Summary
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.summary}
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-accent p-3">
+                          <div className="text-xs text-muted-foreground">
+                            SAP Content-Type
+                          </div>
+                          <div className="font-medium">
+                            {selectedDebugResponse.upstreamContentType || "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-accent p-3 font-mono text-xs text-muted-foreground">
+                        {selectedDebugResponse.path}
+                      </div>
+
+                      <textarea
+                        readOnly
+                        value={selectedDebugResponse.body}
+                        className="h-[52vh] w-full resize-none rounded-md border border-border bg-white p-3 font-mono text-xs text-foreground outline-none"
+                      />
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </Card>
     </TooltipProvider>
   );

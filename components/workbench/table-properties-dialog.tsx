@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Info, LoaderCircle } from "lucide-react";
+import { Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -137,11 +137,47 @@ export function TablePropertiesDialog({
         </DialogHeader>
 
         {isLoading ? (
-          <div className="flex items-center justify-center gap-3 py-20 text-muted-foreground">
-            <LoaderCircle className="size-5 animate-spin text-primary" />
-            <span className="text-sm">
-              Loading field metadata for {entityName}...
-            </span>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="w-full min-w-[800px]">
+              <TableHeader>
+                <TableRow className="border-b border-border bg-accent">
+                  {[
+                    "Pos",
+                    "Field Name",
+                    "JSON Key",
+                    "Data Element",
+                    "Type",
+                    "Len",
+                    "Dec",
+                    "Key",
+                    "Label",
+                  ].map((h) => (
+                    <TableHead
+                      key={h}
+                      className="h-8 text-xs font-semibold text-foreground bg-accent"
+                    >
+                      {h}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <TableRow key={i} className="border-b border-transparent">
+                    {Array.from({ length: 9 }).map((__, j) => (
+                      <TableCell key={j} className="py-1.5">
+                        <div
+                          className="h-3 animate-pulse rounded bg-accent"
+                          style={{
+                            width: `${j === 0 ? 24 : j === 4 ? 40 : j === 5 || j === 6 ? 28 : j === 7 ? 32 : 60 + Math.floor(Math.random() * 80)}px`,
+                          }}
+                        />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </table>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
