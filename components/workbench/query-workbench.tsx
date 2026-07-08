@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { LoaderCircle, Wand2 } from "lucide-react";
+import { Bookmark, LoaderCircle, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,7 @@ type QueryWorkbenchProps = {
   onSelectEntity: (entityName: string) => void;
   onApplyTemplate: (template: WorkbenchTemplate) => void;
   onRunQuery: () => void;
+  onOpenSavedQueries?: () => void;
   editorHeight?: string;
 };
 
@@ -64,6 +65,7 @@ export function QueryWorkbench({
   onSelectEntity,
   onApplyTemplate,
   onRunQuery,
+  onOpenSavedQueries,
   editorHeight = "340px",
 }: QueryWorkbenchProps) {
   const [templateSelectValue, setTemplateSelectValue] = useState<
@@ -152,6 +154,22 @@ export function QueryWorkbench({
             <div className="text-xs text-muted-foreground">
               {queryText.length} chars
             </div>
+            {onOpenSavedQueries ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onOpenSavedQueries}
+                    className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+                  >
+                    <Bookmark className="size-4" />
+                    Saved
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Browse and manage saved queries</TooltipContent>
+              </Tooltip>
+            ) : null}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

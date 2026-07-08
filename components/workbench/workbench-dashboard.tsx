@@ -15,6 +15,7 @@ import { EntityBrowser } from "@/components/workbench/entity-browser";
 import { QueryWorkbench } from "@/components/workbench/query-workbench";
 import { ResultsTable } from "@/components/workbench/results-table";
 import { TablePropertiesDialog } from "@/components/workbench/table-properties-dialog";
+import { SavedQueriesDialog } from "@/components/workbench/saved-queries-dialog";
 import { ActionOutput } from "@/components/workbench/action-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ export function WorkbenchDashboard() {
   const [showFullscreenResults, setShowFullscreenResults] = useState(false);
   const [showPropertiesDialog, setShowPropertiesDialog] = useState(false);
   const [propertiesEntityName, setPropertiesEntityName] = useState("");
+  const [showSavedQueriesDialog, setShowSavedQueriesDialog] = useState(false);
   const [objectExplorerWidth, setObjectExplorerWidth] = useState(300);
   const [queryPanelHeight, setQueryPanelHeight] = useState(260);
   const [messagesPanelHeight, setMessagesPanelHeight] = useState(150);
@@ -447,6 +449,7 @@ export function WorkbenchDashboard() {
                 onSelectEntity={handleEntityChange}
                 onApplyTemplate={applyTemplate}
                 onRunQuery={executeAndShowResults}
+                onOpenSavedQueries={() => setShowSavedQueriesDialog(true)}
                 editorHeight="100%"
               />
             </div>
@@ -561,6 +564,14 @@ export function WorkbenchDashboard() {
         entityName={propertiesEntityName}
         entityType={selectedEntity?.tags[1]}
         entityDescription={selectedEntity?.description}
+      />
+      <SavedQueriesDialog
+        open={showSavedQueriesDialog}
+        onOpenChange={setShowSavedQueriesDialog}
+        currentQueryText={queryText}
+        currentUser={sessionInfo?.user}
+        onLoadQuery={setQueryText}
+        onRunQuery={executeAndShowResults}
       />
     </main>
   );
