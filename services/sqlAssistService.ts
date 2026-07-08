@@ -1,5 +1,11 @@
 import { sapClient } from "@/services/sapClient";
-import type { SapSqlwbField, SapSqlwbTable } from "@/types/sap";
+import type {
+  SapSaveQueryEnvelope,
+  SapSaveQueryResult,
+  SapSqlwbField,
+  SapSqlwbSavedQuery,
+  SapSqlwbTable,
+} from "@/types/sap";
 
 const servicePath = "opu/odata/sap/ZSQLWB_ODATA_SRV";
 const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
@@ -21,6 +27,17 @@ function buildFunctionPath(
   });
 
   return `${servicePath}/${functionName}?${searchParams.toString()}`;
+}
+
+function buildSavedQueryListPath(profileId: string, top = 100, skip = 0) {
+  const filter = `ProfileId eq ${quoteODataString(profileId)}`;
+  const params = new URLSearchParams({
+    $format: "json",
+    $filter: filter,
+    $top: String(top),
+    $skip: String(skip),
+  });
+  return `${servicePath}/SqlwbSavedQuerySet?${params.toString()}`;
 }
 
 export const sqlAssistService = {
@@ -50,6 +67,50 @@ export const sqlAssistService = {
         ProfileId: quoteODataString(queryProfileId),
         ObjectName: quoteODataString(objectName),
       }),
+    );
+  },
+
+  listSavedQueries: async (profileId?: string, top = 100, skip = 0) => {
+    const pid = profileId ?? queryProfileId;
+    return sapClient.fetchCollection<SapSqlwbSavedQuery>(
+      buildSavedQueryListPath(pid, top, skip),
+    );
+  },
+
+  saveQuery: async (params: {
+    profileId?: string;
+    queryName: string;
+    queryText: string;
+    visibility?: string;
+    tags?: string;
+    description?: string;
+  }): Promise<SapSaveQueryResult> => {
+    const pid = params.profileId ?? queryProfileId;
+    // Build URL manually — buildFunctionPath drops empty params, but Gateway
+    // requires ALL declared function import parameters (even empty strings).
+    const qs = new URLSearchParams({
+      ProfileId: quoteODataString(pid),
+      QueryName: quoteODataString(params.queryName),
+      QueryText: quoteODataString(params.queryText),
+      Visibility: quoteODataString(params.visibility ?? ""),
+      Tags: quoteODataString(params.tags ?? ""),
+      Description: quoteODataString(params.description ?? ""),
+    });
+    const response = await sapClient.request<SapSaveQueryEnvelope>(
+      `${servicePath}/SaveQuery?${qs.toString()}`,
+      { method: "POST" },
+    );
+
+    const data = response.d;
+    if (!data) return {};
+    if ("SaveQuery" in data && data.SaveQuery) return data.SaveQuery;
+    return data as SapSaveQueryResult;
+  },
+
+  deleteSavedQuery: async (profileId: string, queryId: string) => {
+    return sapClient.request(
+      `${servicePath}/SqlwbSavedQuerySet(QueryId=${quoteODataString(queryId)},ProfileId=${quoteODataString(profileId)})`,
+      { method: "DELETE" },
     );
   },
 };

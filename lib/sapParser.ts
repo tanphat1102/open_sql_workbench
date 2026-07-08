@@ -73,3 +73,22 @@ export function parseSapDate(value: string | null | undefined): Date | null {
 
   return new Date(timestamp);
 }
+
+const errorCodeLabels: Record<string, string> = {
+  EMPTY_SQL: "SQL is empty",
+  ONLY_SELECT_ALLOWED: "Only SELECT statements are allowed",
+  FORBIDDEN_SYNTAX: "SQL syntax is not allowed",
+  FORBIDDEN_KEYWORD: "SQL contains a forbidden keyword",
+  PARSE_FAILED: "Unable to parse SQL statement",
+  OBJECT_NOT_ALLOWED: "Table is not allowed for this profile",
+  INVALID_FIELD: "Field is not valid for the selected table",
+  INVALID_WHERE: "WHERE clause is invalid or not supported",
+  INVALID_ORDER_BY: "ORDER BY is required for pagination or contains unsupported expression",
+  VALIDATION_ERROR: "Request validation failed",
+  SYSTEM_ERROR: "Internal system error",
+};
+
+export function getErrorCodeLabel(code: string | undefined | null): string {
+  if (!code) return "";
+  return errorCodeLabels[code] ?? code;
+}

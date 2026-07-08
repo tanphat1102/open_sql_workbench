@@ -98,3 +98,29 @@ export type SapSqlwbField = {
   IsKey?: boolean | string;
   Label?: string;
 };
+
+export type SapSqlwbSavedQuery = {
+  QueryId?: string;
+  QueryName?: string;
+  QueryText?: string;
+  Visibility?: string;
+  Owner?: string;
+  Tags?: string;
+  Description?: string;
+  ProfileId?: string;
+};
+
+export type SapSaveQueryResult = {
+  QueryId?: string;
+  Status?: string;
+  ErrorCode?: string;
+  ErrorText?: string;
+};
+
+export type SapSaveQueryEnvelope = {
+  d?: SapSaveQueryResult | { SaveQuery?: SapSaveQueryResult };
+};
+
+export type SapRunSavedQueryEnvelope = {
+  d?: SapRunQueryResult | { RunSavedQuery?: SapRunQueryResult };
+};
