@@ -59,19 +59,21 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-5">
+            {/* Client field */}
             <div>
               <label
                 className="mb-2 block text-sm font-medium text-foreground"
                 htmlFor="client"
               >
                 Client
+                <span className="ml-1 text-destructive">*</span>
               </label>
               <Input
                 id="client"
                 value={client}
                 onChange={(event) => setClient(event.target.value)}
                 className="h-12"
-                placeholder="324"
+                placeholder="Your client code"
                 inputMode="numeric"
                 maxLength={3}
                 autoComplete="off"
@@ -80,30 +82,36 @@ export default function LoginPage() {
               />
             </div>
 
+            {/* Username field */}
             <div>
               <label
                 className="mb-2 block text-sm font-medium text-foreground"
                 htmlFor="username"
               >
                 Username
+                <span className="ml-1 text-destructive">*</span>
               </label>
               <Input
                 id="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 className="h-12"
+                placeholder="Your username"
                 autoComplete="username"
                 disabled={loading}
                 required
               />
             </div>
 
+            {/* Password field */}
             <div>
               <label
                 className="mb-2 block text-sm font-medium text-foreground"
                 htmlFor="password"
               >
                 Password
+                <span className="ml-1 text-destructive">*</span>{" "}
+                {/* Thêm dấu * */}
               </label>
               <div className="relative">
                 <Input
@@ -112,6 +120,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="h-12 pr-24"
+                  placeholder="Your password"
                   autoComplete="current-password"
                   disabled={loading}
                   required
