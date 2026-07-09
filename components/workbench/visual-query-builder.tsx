@@ -36,11 +36,17 @@ import { sqlAssistService } from "@/services/sqlAssistService";
 import type { SapSqlwbField } from "@/types/sap";
 import type { WorkbenchEntity } from "@/types/workbench";
 
+type BuilderOrderClause = {
+  field: string;
+  direction: "ASC" | "DESC";
+};
+
 type BuilderNode = {
   id: string;
   entityName: string;
   alias: string;
   fields: string;
+  orderBy: BuilderOrderClause[];
   x: number;
   y: number;
 };
@@ -95,7 +101,9 @@ const preferredJoinFields = new Set([
 const blockedJoinFields = new Set(["MANDT"]);
 
 function getEntityLabel(entityName: string, entities: WorkbenchEntity[]) {
-  return entities.find((entity) => entity.name === entityName)?.description ?? "";
+  return (
+    entities.find((entity) => entity.name === entityName)?.description ?? ""
+  );
 }
 
 function getAlias(index: number) {
@@ -386,7 +394,27 @@ function buildSql(
     lines.push(whereClause);
   }
 
+  const orderByClause = buildOrderByClause(nodes);
+
+  if (orderByClause) {
+    lines.push(orderByClause);
+  }
+
   return lines.join("\n");
+}
+
+function buildOrderByClause(nodes: BuilderNode[]) {
+  const clauses = nodes.flatMap((node) =>
+    node.orderBy
+      .filter((o) => o.field)
+      .map((o) =>
+        nodes.length > 1
+          ? `${node.alias}~${o.field} ${o.direction}`
+          : `${o.field} ${o.direction}`,
+      ),
+  );
+
+  return clauses.length > 0 ? `ORDER BY ${clauses.join(", ")}` : "";
 }
 
 function centerPosition(index: number) {
@@ -574,6 +602,7 @@ export function VisualQueryBuilder({
       entityName,
       alias: getNextAlias(nodes),
       fields: "",
+      orderBy: [],
       x: position.x,
       y: position.y,
     };
@@ -652,8 +681,14 @@ export function VisualQueryBuilder({
       window.cancelAnimationFrame(session.frameId);
     }
 
-    const nextX = Math.max(8, session.originX + session.currentX - session.startX);
-    const nextY = Math.max(8, session.originY + session.currentY - session.startY);
+    const nextX = Math.max(
+      8,
+      session.originX + session.currentX - session.startX,
+    );
+    const nextY = Math.max(
+      8,
+      session.originY + session.currentY - session.startY,
+    );
 
     session.element.style.transform = "";
     dragSessionRef.current = null;
@@ -821,7 +856,8 @@ export function VisualQueryBuilder({
     if (!suggestion) {
       toast({
         title: "No valid join fields",
-        description: "Select objects with related fields or load their metadata first.",
+        description:
+          "Select objects with related fields or load their metadata first.",
         variant: "destructive",
       });
       return;
@@ -891,7 +927,8 @@ export function VisualQueryBuilder({
     if (invalidFilter) {
       toast({
         title: "Valid WHERE condition required",
-        description: "Choose a metadata field and enter a value for every filter.",
+        description:
+          "Choose a metadata field and enter a value for every filter.",
         variant: "destructive",
       });
       return;
@@ -1138,9 +1175,11 @@ export function VisualQueryBuilder({
           {nodes.map((node) => {
             const nodeFields = sortFields(getNodeFields(node, fieldsByEntity));
             const selectedFields = new Set(
-              parseFields(node.fields).map((field) => normalizeFieldName(field)),
+              parseFields(node.fields).map((field) =>
+                normalizeFieldName(field),
+              ),
             );
-            const visibleFields = nodeFields.slice(0, 8);
+            const allFields = nodeFields;
             const normalizedAlias = node.alias.trim().toLowerCase();
             const aliasIsInvalid =
               !normalizedAlias ||
@@ -1206,7 +1245,9 @@ export function VisualQueryBuilder({
                     />
                   </div>
                   <div className="grid gap-1">
-                    <span className="text-xs text-muted-foreground">Fields</span>
+                    <span className="text-xs text-muted-foreground">
+                      Fields
+                    </span>
                     <Input
                       value={node.fields}
                       onChange={(event) =>
@@ -1215,9 +1256,38 @@ export function VisualQueryBuilder({
                       placeholder={nodes.length === 1 ? "*" : "CARRID, CONNID"}
                       className="h-7"
                     />
-                    {visibleFields.length > 0 ? (
-                      <div className="flex max-h-16 flex-wrap gap-1 overflow-hidden">
-                        {visibleFields.map((field) => {
+                    {allFields.length > 0 ? (
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">
+                          {allFields.length} fields
+                        </span>
+                        <span className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateNode(node.id, {
+                                fields: allFields
+                                  .map((f) => getFieldName(f))
+                                  .join(", "),
+                              })
+                            }
+                            className="text-[10px] text-primary hover:underline"
+                          >
+                            All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateNode(node.id, { fields: "" })}
+                            className="text-[10px] text-muted-foreground hover:underline"
+                          >
+                            Clear
+                          </button>
+                        </span>
+                      </div>
+                    ) : null}
+                    {allFields.length > 0 ? (
+                      <div className="flex max-h-28 flex-wrap content-start gap-1 overflow-auto">
+                        {allFields.map((field) => {
                           const fieldName = getFieldName(field);
                           const selected = selectedFields.has(fieldName);
 
@@ -1225,7 +1295,9 @@ export function VisualQueryBuilder({
                             <button
                               key={fieldName}
                               type="button"
-                              onClick={() => toggleNodeField(node.id, fieldName)}
+                              onClick={() =>
+                                toggleNodeField(node.id, fieldName)
+                              }
                               className={cn(
                                 "h-5 rounded border px-1.5 text-[10px] leading-none",
                                 selected
@@ -1242,6 +1314,89 @@ export function VisualQueryBuilder({
                             </button>
                           );
                         })}
+                      </div>
+                    ) : null}
+                    {allFields.length > 0 ? (
+                      <div className="border-t border-border pt-2">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-[10px] text-muted-foreground">
+                            Order By
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateNode(node.id, {
+                                orderBy: [
+                                  ...node.orderBy,
+                                  { field: "", direction: "ASC" },
+                                ],
+                              })
+                            }
+                            className="text-[10px] text-primary hover:underline"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                        {node.orderBy.map((order, oi) => (
+                          <div
+                            key={oi}
+                            className="mb-1 flex items-center gap-1"
+                          >
+                            <Select
+                              value={order.field}
+                              onValueChange={(v) => {
+                                const next = [...node.orderBy];
+                                next[oi] = { ...next[oi], field: v };
+                                updateNode(node.id, { orderBy: next });
+                              }}
+                            >
+                              <SelectTrigger className="h-6 flex-1 text-[10px]">
+                                <SelectValue placeholder="Field" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allFields.map((f) => (
+                                  <SelectItem
+                                    key={getFieldName(f)}
+                                    value={getFieldName(f)}
+                                  >
+                                    {getFieldName(f)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              value={order.direction}
+                              onValueChange={(v) => {
+                                const next = [...node.orderBy];
+                                next[oi] = {
+                                  ...next[oi],
+                                  direction: v as "ASC" | "DESC",
+                                };
+                                updateNode(node.id, { orderBy: next });
+                              }}
+                            >
+                              <SelectTrigger className="h-6 w-16 text-[10px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ASC">ASC</SelectItem>
+                                <SelectItem value="DESC">DESC</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = node.orderBy.filter(
+                                  (_, i) => i !== oi,
+                                );
+                                updateNode(node.id, { orderBy: next });
+                              }}
+                              className="shrink-0 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="size-3" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                   </div>
