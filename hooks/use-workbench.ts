@@ -38,6 +38,22 @@ function getErrorStatus(error: unknown) {
     : undefined;
 }
 
+function getErrorDetail(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback;
+
+  const parts = [error.message];
+  const extra = error as unknown as Record<string, unknown>;
+
+  if (typeof extra.sapStatus === "string" && extra.sapStatus) {
+    parts.push(`SAP Status: ${extra.sapStatus}`);
+  }
+  if (typeof extra.sapErrorCode === "string" && extra.sapErrorCode) {
+    parts.push(`Error Code: ${extra.sapErrorCode}`);
+  }
+
+  return parts.join("\n");
+}
+
 function buildLocalPageInfo(rows: WorkbenchRow[]): WorkbenchPageInfo {
   return {
     rowCount: rows.length,
@@ -469,15 +485,11 @@ export function useWorkbench() {
         if (getErrorStatus(error) === 401) {
           setNeedLogin(true);
         }
-        setResultDebugResponses([]);
         setActivityEntries((currentEntries) => [
           {
             id: `activity-${Date.now()}`,
             title: `Query failed for ${selectedEntityName}`,
-            detail:
-              error instanceof Error
-                ? error.message
-                : "Unable to execute live OData query.",
+            detail: getErrorDetail(error, "Unable to execute live OData query."),
             timestampRaw: "/Date(1716496400000)/",
             tone: "error",
           },
@@ -556,15 +568,11 @@ export function useWorkbench() {
           setNeedLogin(true);
         }
 
-        setResultDebugResponses([]);
         setActivityEntries((currentEntries) => [
           {
             id: `activity-${Date.now()}`,
             title: `Preview failed for ${entityName}`,
-            detail:
-              error instanceof Error
-                ? error.message
-                : "Unable to preview the selected SAP table.",
+            detail: getErrorDetail(error, "Unable to preview the selected SAP table."),
             timestampRaw: "/Date(1716496400000)/",
             tone: "error",
           },

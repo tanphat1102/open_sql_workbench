@@ -212,6 +212,7 @@ export function QueryWorkbench({
           </div>
           <TabsContent
             value="sql"
+            forceMount
             className="min-h-0 flex-1 p-0 data-[state=inactive]:hidden"
           >
             <div className="h-full min-h-0 p-0">
@@ -228,6 +229,7 @@ export function QueryWorkbench({
           </TabsContent>
           <TabsContent
             value="builder"
+            forceMount
             className="min-h-0 flex-1 p-0 data-[state=inactive]:hidden"
           >
             <VisualQueryBuilder

@@ -173,6 +173,14 @@ export function ResultsTable({
   const headerDragRef = useRef<HeaderDragState | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  // Reset filters/sort when entity changes (new query, different columns)
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setSortConfig(null);
+    setColumnFilters({});
+    setSearchText("");
+  }, [entityName]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const visibleColumns = useMemo(
     () => (columns.length > 0 ? columns : buildFallbackColumns(rows)),
     [columns, rows],
