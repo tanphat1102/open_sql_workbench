@@ -134,6 +134,7 @@ export function useWorkbench() {
   const operationRef = useRef(0);
   const resultContextRef = useRef<ResultContext | null>(null);
   const pageCacheRef = useRef(new Map<string, ResultPageCacheEntry>());
+  const queryTextOverrideRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -260,7 +261,7 @@ export function useWorkbench() {
               : "Ready",
           detail: isLoadingSnapshot
             ? (loadError ??
-              "Loading live entity sets from /api/sap/opu/odata/sap/ZSQLWB_ODATA_SRV")
+              `Loading live entity sets from /api/sap/opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}`)
             : isRunning
               ? "Refreshing the current preview"
               : `Showing ${rowCount} preview rows`,
@@ -306,6 +307,8 @@ export function useWorkbench() {
 
   function handleQueryTextChange(value: string) {
     setQueryText(value);
+    // Override next runQuery with this exact text (supports selection-based execution)
+    queryTextOverrideRef.current = value;
     resultContextRef.current = null;
     pageCacheRef.current.clear();
   }
@@ -423,11 +426,14 @@ export function useWorkbench() {
     const operationId = operationRef.current + 1;
     operationRef.current = operationId;
     setIsRunning(true);
+    // Use selection override if set (user highlighted text in editor)
+    const effectiveQuery = queryTextOverrideRef.current ?? queryText;
+    queryTextOverrideRef.current = null;
 
     void (async () => {
       try {
         const execution = await workbenchService.executeQuery(
-          queryText,
+          effectiveQuery,
           selectedEntityName,
           entities.map((entity) => entity.name),
           page,
