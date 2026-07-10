@@ -7,20 +7,10 @@ import {
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  CornerDownRight,
-  GripVertical,
-  LoaderCircle,
-  Plus,
-  RotateCcw,
-  Sparkles,
-  Table2,
-  Trash2,
-} from "lucide-react";
+import { CornerDownRight, Plus, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -34,57 +24,16 @@ import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { sqlAssistService } from "@/services/sqlAssistService";
 import type { SapSqlwbField } from "@/types/sap";
-import type { WorkbenchEntity } from "@/types/workbench";
-
-type BuilderOrderClause = {
-  field: string;
-  direction: "ASC" | "DESC";
-};
-
-type BuilderNode = {
-  id: string;
-  entityName: string;
-  alias: string;
-  fields: string;
-  orderBy: BuilderOrderClause[];
-  x: number;
-  y: number;
-};
-
-type BuilderJoin = {
-  id: string;
-  leftNodeId: string;
-  rightNodeId: string;
-  joinType: "INNER JOIN" | "LEFT OUTER JOIN";
-  leftField: string;
-  rightField: string;
-};
-
-type BuilderFilter = {
-  id: string;
-  nodeId: string;
-  field: string;
-  operator: "=" | "<>" | ">" | ">=" | "<" | "<=" | "LIKE";
-  value: string;
-  conjunction: "AND" | "OR";
-};
-
-type VisualQueryBuilderProps = {
-  entities: WorkbenchEntity[];
-  onApplySql: (sql: string) => void;
-};
-
-type NodeDragSession = {
-  nodeId: string;
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-  currentX: number;
-  currentY: number;
-  element: HTMLDivElement;
-  frameId: number | null;
-};
+import type {
+  BuilderNode,
+  BuilderJoin,
+  BuilderFilter,
+  VisualQueryBuilderProps,
+  NodeDragSession,
+} from "@/types/builder";
+import { BuilderNodeCard } from "@/components/workbench/builder-node-card";
+import { BuilderJoinEditor } from "@/components/workbench/builder-join-editor";
+import { BuilderFilterEditor } from "@/components/workbench/builder-filter-editor";
 
 const nodeWidth = 220;
 const nodeAnchorOffsetY = 74;
@@ -100,11 +49,6 @@ const preferredJoinFields = new Set([
 ]);
 const blockedJoinFields = new Set(["MANDT"]);
 
-function getEntityLabel(entityName: string, entities: WorkbenchEntity[]) {
-  return (
-    entities.find((entity) => entity.name === entityName)?.description ?? ""
-  );
-}
 
 function getAlias(index: number) {
   return String.fromCharCode("a".charCodeAt(0) + index);
@@ -942,104 +886,6 @@ export function VisualQueryBuilder({
     });
   }
 
-  function renderFieldSelect({
-    nodeId,
-    value,
-    onValueChange,
-    placeholder,
-  }: {
-    nodeId: string;
-    value: string;
-    onValueChange: (fieldName: string) => void;
-    placeholder: string;
-  }) {
-    const node = nodes.find((item) => item.id === nodeId);
-    const fields = sortFields(getNodeFields(node, fieldsByEntity)).filter(
-      (field) => !blockedJoinFields.has(getFieldName(field)),
-    );
-
-    if (!node || fields.length === 0) {
-      return (
-        <Input
-          value={value}
-          onChange={(event) => onValueChange(event.target.value)}
-          placeholder={placeholder}
-          className="h-7"
-        />
-      );
-    }
-
-    return (
-      <Select value={value || undefined} onValueChange={onValueChange}>
-        <SelectTrigger className="h-7">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {fields.map((field) => {
-            const fieldName = getFieldName(field);
-
-            return (
-              <SelectItem key={fieldName} value={fieldName}>
-                <span className="flex items-center gap-2">
-                  <span>{fieldName}</span>
-                  {isKeyField(field) ? (
-                    <span className="text-[10px] uppercase text-primary">
-                      Key
-                    </span>
-                  ) : null}
-                </span>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-    );
-  }
-
-  function renderFilterFieldSelect(filter: BuilderFilter) {
-    const node = nodes.find((item) => item.id === filter.nodeId);
-    const fields = sortFields(getNodeFields(node, fieldsByEntity)).filter(
-      (field) => !blockedJoinFields.has(getFieldName(field)),
-    );
-
-    if (!node || fields.length === 0) {
-      return (
-        <Input
-          value={filter.field}
-          onChange={(event) =>
-            updateFilter(filter.id, {
-              field: normalizeFieldName(event.target.value),
-            })
-          }
-          placeholder="Field"
-          className="h-7"
-        />
-      );
-    }
-
-    return (
-      <Select
-        value={filter.field || undefined}
-        onValueChange={(field) => updateFilter(filter.id, { field })}
-      >
-        <SelectTrigger className="h-7">
-          <SelectValue placeholder="Field" />
-        </SelectTrigger>
-        <SelectContent>
-          {fields.map((field) => {
-            const fieldName = getFieldName(field);
-
-            return (
-              <SelectItem key={fieldName} value={fieldName}>
-                {fieldName}
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-    );
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-[#f7fbff] px-3 py-2">
@@ -1174,237 +1020,25 @@ export function VisualQueryBuilder({
 
           {nodes.map((node) => {
             const nodeFields = sortFields(getNodeFields(node, fieldsByEntity));
-            const selectedFields = new Set(
-              parseFields(node.fields).map((field) =>
-                normalizeFieldName(field),
-              ),
-            );
-            const allFields = nodeFields;
-            const normalizedAlias = node.alias.trim().toLowerCase();
-            const aliasIsInvalid =
-              !normalizedAlias ||
-              nodes.some(
-                (item) =>
-                  item.id !== node.id &&
-                  item.alias.trim().toLowerCase() === normalizedAlias,
-              );
 
             return (
-              <div
+              <BuilderNodeCard
                 key={node.id}
-                className={cn(
-                  "absolute z-10 rounded-md border border-[#b8d6ef] bg-white shadow-sm will-change-transform",
-                  activeDragNodeId === node.id &&
-                    "shadow-lg ring-2 ring-primary/20",
-                )}
-                style={{ left: node.x, top: node.y, width: nodeWidth }}
-                data-builder-node
-              >
-                <div className="flex items-center gap-2 rounded-t-md border-b border-border bg-[#f7fbff] px-2 py-1.5">
-                  <span
-                    className="cursor-grab rounded p-0.5 text-muted-foreground active:cursor-grabbing"
-                    onPointerCancel={handleNodeDragEnd}
-                    onPointerDown={(event) => handleNodeDragStart(event, node)}
-                    onPointerMove={handleNodeDragMove}
-                    onPointerUp={handleNodeDragEnd}
-                  >
-                    <GripVertical className="size-4" />
-                  </span>
-                  <Table2 className="size-4 text-primary" />
-                  <div className="min-w-0 flex-1 truncate font-medium">
-                    {node.entityName}
-                  </div>
-                  {loadingFields[node.entityName] ? (
-                    <LoaderCircle className="size-3.5 animate-spin text-primary" />
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => removeNode(node.id)}
-                    aria-label={`Remove ${node.entityName}`}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-                <div className="space-y-2 p-2">
-                  <div className="grid grid-cols-[56px_1fr] items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Alias</span>
-                    <Input
-                      value={node.alias}
-                      onChange={(event) =>
-                        updateNode(node.id, {
-                          alias: event.target.value.trim().toLowerCase(),
-                        })
-                      }
-                      className={cn(
-                        "h-7",
-                        aliasIsInvalid &&
-                          "border-destructive focus-visible:ring-destructive/25",
-                      )}
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <span className="text-xs text-muted-foreground">
-                      Fields
-                    </span>
-                    <Input
-                      value={node.fields}
-                      onChange={(event) =>
-                        updateNode(node.id, { fields: event.target.value })
-                      }
-                      placeholder={nodes.length === 1 ? "*" : "CARRID, CONNID"}
-                      className="h-7"
-                    />
-                    {allFields.length > 0 ? (
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground">
-                          {allFields.length} fields
-                        </span>
-                        <span className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateNode(node.id, {
-                                fields: allFields
-                                  .map((f) => getFieldName(f))
-                                  .join(", "),
-                              })
-                            }
-                            className="text-[10px] text-primary hover:underline"
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateNode(node.id, { fields: "" })}
-                            className="text-[10px] text-muted-foreground hover:underline"
-                          >
-                            Clear
-                          </button>
-                        </span>
-                      </div>
-                    ) : null}
-                    {allFields.length > 0 ? (
-                      <div className="flex max-h-28 flex-wrap content-start gap-1 overflow-auto">
-                        {allFields.map((field) => {
-                          const fieldName = getFieldName(field);
-                          const selected = selectedFields.has(fieldName);
-
-                          return (
-                            <button
-                              key={fieldName}
-                              type="button"
-                              onClick={() =>
-                                toggleNodeField(node.id, fieldName)
-                              }
-                              className={cn(
-                                "h-5 rounded border px-1.5 text-[10px] leading-none",
-                                selected
-                                  ? "border-primary bg-[#e5f2ff] text-primary"
-                                  : "border-border bg-white text-muted-foreground hover:border-primary/60 hover:text-primary",
-                              )}
-                            >
-                              {fieldName}
-                              {isKeyField(field) ? (
-                                <span className="ml-1 text-[9px] uppercase">
-                                  Key
-                                </span>
-                              ) : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                    {allFields.length > 0 ? (
-                      <div className="border-t border-border pt-2">
-                        <div className="mb-1 flex items-center justify-between">
-                          <span className="text-[10px] text-muted-foreground">
-                            Order By
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateNode(node.id, {
-                                orderBy: [
-                                  ...node.orderBy,
-                                  { field: "", direction: "ASC" },
-                                ],
-                              })
-                            }
-                            className="text-[10px] text-primary hover:underline"
-                          >
-                            + Add
-                          </button>
-                        </div>
-                        {node.orderBy.map((order, oi) => (
-                          <div
-                            key={oi}
-                            className="mb-1 flex items-center gap-1"
-                          >
-                            <Select
-                              value={order.field}
-                              onValueChange={(v) => {
-                                const next = [...node.orderBy];
-                                next[oi] = { ...next[oi], field: v };
-                                updateNode(node.id, { orderBy: next });
-                              }}
-                            >
-                              <SelectTrigger className="h-6 flex-1 text-[10px]">
-                                <SelectValue placeholder="Field" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {allFields.map((f) => (
-                                  <SelectItem
-                                    key={getFieldName(f)}
-                                    value={getFieldName(f)}
-                                  >
-                                    {getFieldName(f)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Select
-                              value={order.direction}
-                              onValueChange={(v) => {
-                                const next = [...node.orderBy];
-                                next[oi] = {
-                                  ...next[oi],
-                                  direction: v as "ASC" | "DESC",
-                                };
-                                updateNode(node.id, { orderBy: next });
-                              }}
-                            >
-                              <SelectTrigger className="h-6 w-16 text-[10px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="ASC">ASC</SelectItem>
-                                <SelectItem value="DESC">DESC</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = node.orderBy.filter(
-                                  (_, i) => i !== oi,
-                                );
-                                updateNode(node.id, { orderBy: next });
-                              }}
-                              className="shrink-0 text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="size-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {getEntityLabel(node.entityName, entities)}
-                  </div>
-                </div>
-              </div>
+                node={node}
+                allNodes={nodes}
+                nodeFields={nodeFields}
+                loading={!!loadingFields[node.entityName]}
+                entities={entities}
+                isDragging={activeDragNodeId === node.id}
+                onUpdate={(patch) => updateNode(node.id, patch)}
+                onRemove={() => removeNode(node.id)}
+                onToggleField={(fieldName) =>
+                  toggleNodeField(node.id, fieldName)
+                }
+                onDragStart={(event) => handleNodeDragStart(event, node)}
+                onDragMove={handleNodeDragMove}
+                onDragEnd={handleNodeDragEnd}
+              />
             );
           })}
         </div>
@@ -1439,110 +1073,32 @@ export function VisualQueryBuilder({
                   nodes,
                   fieldsByEntity,
                 );
+                const leftNode = nodes.find((n) => n.id === join.leftNodeId);
+                const rightNode = nodes.find((n) => n.id === join.rightNodeId);
+                const leftNodeFields = sortFields(
+                  getNodeFields(leftNode, fieldsByEntity),
+                ).filter((f) => !blockedJoinFields.has(getFieldName(f)));
+                const rightNodeFields = sortFields(
+                  getNodeFields(rightNode, fieldsByEntity),
+                ).filter((f) => !blockedJoinFields.has(getFieldName(f)));
 
                 return (
-                  <div
+                  <BuilderJoinEditor
                     key={join.id}
-                    className="space-y-2 rounded-md border border-border bg-white p-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Select
-                        value={join.joinType}
-                        onValueChange={(value) =>
-                          updateJoin(join.id, {
-                            joinType: value as BuilderJoin["joinType"],
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-7">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="INNER JOIN">Inner join</SelectItem>
-                          <SelectItem value="LEFT OUTER JOIN">
-                            Left outer join
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => applyJoinSuggestion(join.id)}
-                      >
-                        <Sparkles />
-                        Suggest
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() =>
-                          setJoins((currentJoins) =>
-                            currentJoins.filter((item) => item.id !== join.id),
-                          )
-                        }
-                        aria-label="Remove join"
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select
-                        value={join.leftNodeId}
-                        onValueChange={(value) =>
-                          updateJoin(join.id, { leftNodeId: value })
-                        }
-                      >
-                        <SelectTrigger className="h-7">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {nodes.map((node) => (
-                            <SelectItem key={node.id} value={node.id}>
-                              {node.alias}: {node.entityName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={join.rightNodeId}
-                        onValueChange={(value) =>
-                          updateJoin(join.id, { rightNodeId: value })
-                        }
-                      >
-                        <SelectTrigger className="h-7">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {nodes.map((node) => (
-                            <SelectItem key={node.id} value={node.id}>
-                              {node.alias}: {node.entityName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {renderFieldSelect({
-                        nodeId: join.leftNodeId,
-                        value: effectiveJoin.leftField,
-                        onValueChange: (leftField) =>
-                          updateJoin(join.id, { leftField }),
-                        placeholder: "Left field",
-                      })}
-                      {renderFieldSelect({
-                        nodeId: join.rightNodeId,
-                        value: effectiveJoin.rightField,
-                        onValueChange: (rightField) =>
-                          updateJoin(join.id, { rightField }),
-                        placeholder: "Right field",
-                      })}
-                    </div>
-                    {!isJoinValid(effectiveJoin, nodes, fieldsByEntity) ? (
-                      <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                        Choose valid metadata fields before applying SQL.
-                      </div>
-                    ) : null}
-                  </div>
+                    join={join}
+                    effectiveJoin={effectiveJoin}
+                    nodes={nodes}
+                    leftNodeFields={leftNodeFields}
+                    rightNodeFields={rightNodeFields}
+                    isValid={isJoinValid(effectiveJoin, nodes, fieldsByEntity)}
+                    onUpdate={(patch) => updateJoin(join.id, patch)}
+                    onRemove={() =>
+                      setJoins((prev) =>
+                        prev.filter((item) => item.id !== join.id),
+                      )
+                    }
+                    onSuggest={() => applyJoinSuggestion(join.id)}
+                  />
                 );
               })}
 
@@ -1569,116 +1125,26 @@ export function VisualQueryBuilder({
               ) : null}
 
               {filters.map((filter, index) => {
-                const validFilter = isFilterValid(
-                  filter,
-                  nodes,
-                  fieldsByEntity,
-                );
+                const node = nodes.find((n) => n.id === filter.nodeId);
+                const nodeFields = sortFields(
+                  getNodeFields(node, fieldsByEntity),
+                ).filter((f) => !blockedJoinFields.has(getFieldName(f)));
 
                 return (
-                  <div
+                  <BuilderFilterEditor
                     key={filter.id}
-                    className="space-y-2 rounded-md border border-border bg-white p-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      {index > 0 ? (
-                        <Select
-                          value={filter.conjunction}
-                          onValueChange={(value) =>
-                            updateFilter(filter.id, {
-                              conjunction:
-                                value as BuilderFilter["conjunction"],
-                            })
-                          }
-                        >
-                          <SelectTrigger className="h-7 w-20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="AND">AND</SelectItem>
-                            <SelectItem value="OR">OR</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge variant="outline" className="h-7 rounded">
-                          WHERE
-                        </Badge>
-                      )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() =>
-                          setFilters((currentFilters) =>
-                            currentFilters.filter(
-                              (item) => item.id !== filter.id,
-                            ),
-                          )
-                        }
-                        aria-label="Remove filter"
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select
-                        value={filter.nodeId}
-                        onValueChange={(nodeId) =>
-                          updateFilter(filter.id, { nodeId, field: "" })
-                        }
-                      >
-                        <SelectTrigger className="h-7">
-                          <SelectValue placeholder="Object" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {nodes.map((node) => (
-                            <SelectItem key={node.id} value={node.id}>
-                              {nodes.length > 1
-                                ? `${node.alias}: ${node.entityName}`
-                                : node.entityName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {renderFilterFieldSelect(filter)}
-                      <Select
-                        value={filter.operator}
-                        onValueChange={(operator) =>
-                          updateFilter(filter.id, {
-                            operator: operator as BuilderFilter["operator"],
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-7">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="=">=</SelectItem>
-                          <SelectItem value="<>">&lt;&gt;</SelectItem>
-                          <SelectItem value=">">&gt;</SelectItem>
-                          <SelectItem value=">=">&gt;=</SelectItem>
-                          <SelectItem value="<">&lt;</SelectItem>
-                          <SelectItem value="<=">&lt;=</SelectItem>
-                          <SelectItem value="LIKE">LIKE</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        value={filter.value}
-                        onChange={(event) =>
-                          updateFilter(filter.id, {
-                            value: event.target.value,
-                          })
-                        }
-                        placeholder="Value"
-                        className="h-7"
-                      />
-                    </div>
-                    {!validFilter ? (
-                      <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                        Choose a field and value for this condition.
-                      </div>
-                    ) : null}
-                  </div>
+                    filter={filter}
+                    index={index}
+                    nodes={nodes}
+                    nodeFields={nodeFields}
+                    isValid={isFilterValid(filter, nodes, fieldsByEntity)}
+                    onUpdate={(patch) => updateFilter(filter.id, patch)}
+                    onRemove={() =>
+                      setFilters((prev) =>
+                        prev.filter((item) => item.id !== filter.id),
+                      )
+                    }
+                  />
                 );
               })}
             </div>
