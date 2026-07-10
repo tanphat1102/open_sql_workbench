@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-const servicePath = "/api/sap/opu/odata/sap/ZSQLWB_ODATA_SRV";
+const servicePath = `/api/sap/opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}`;
 
 type TestKind = "columns" | "chunks";
 

@@ -7,7 +7,7 @@ import type {
   SapSqlwbTable,
 } from "@/types/sap";
 
-const servicePath = "opu/odata/sap/ZSQLWB_ODATA_SRV";
+const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}`;
 const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
 
 function quoteODataString(value: string) {
