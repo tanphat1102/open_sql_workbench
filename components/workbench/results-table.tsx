@@ -567,8 +567,8 @@ export function ResultsTable({
         </CardHeader>
 
         <CardContent className="relative min-h-0 flex-1 p-0">
-          {isLoading && rows.length === 0 ? (
-            <div className="h-full min-w-0 overflow-auto bg-white">
+          {isLoading ? (
+            <div className="h-full min-w-0 overflow-hidden pointer-events-none select-none bg-white">
               <table
                 className="w-full table-fixed caption-bottom text-sm"
                 style={{
@@ -584,9 +584,27 @@ export function ResultsTable({
                       ? columns.map((c) => (
                           <TableHead
                             key={c.key}
-                            className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
+                            className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary align-top"
                           >
-                            {c.label || c.fieldName}
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center">
+                                <span className="truncate">{c.label || c.fieldName}</span>
+                                {c.isKey ? (
+                                  <span className="ml-1.5 shrink-0 rounded border border-border px-1 text-[10px] font-medium opacity-50">
+                                    KEY
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="truncate text-[10px] font-normal text-muted-foreground opacity-50">
+                                {[
+                                  c.abapType,
+                                  c.length !== undefined ? `L:${c.length}` : undefined,
+                                  c.decimals !== undefined ? `D:${c.decimals}` : undefined,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" | ")}
+                              </div>
+                            </div>
                           </TableHead>
                         ))
                       : Array.from({ length: 4 }).map((_, i) => (
@@ -675,24 +693,28 @@ export function ResultsTable({
                     {visibleColumns.map((column) => (
                       <TableHead
                         key={column.key}
-                        className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary"
-                        title={[
-                          column.fieldName,
-                          column.abapType,
-                          column.length ? `Length ${column.length}` : undefined,
-                          column.decimals
-                            ? `Decimals ${column.decimals}`
-                            : undefined,
-                        ]
-                          .filter(Boolean)
-                          .join(" | ")}
+                        className="sticky top-0 w-[168px] border-b border-border bg-accent px-3 py-2 text-xs font-semibold text-primary align-top"
+                        title={column.fieldName}
                       >
-                        {column.label || column.fieldName}
-                        {column.isKey ? (
-                          <span className="ml-2 rounded border border-border px-1 text-[10px] font-medium">
-                            KEY
-                          </span>
-                        ) : null}
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center">
+                            <span className="truncate">{column.label || column.fieldName}</span>
+                            {column.isKey ? (
+                              <span className="ml-1.5 shrink-0 rounded border border-border px-1 text-[10px] font-medium">
+                                KEY
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="truncate text-[10px] font-normal text-muted-foreground">
+                            {[
+                              column.abapType,
+                              column.length !== undefined ? `L:${column.length}` : undefined,
+                              column.decimals !== undefined ? `D:${column.decimals}` : undefined,
+                            ]
+                              .filter(Boolean)
+                              .join(" | ")}
+                          </div>
+                        </div>
                       </TableHead>
                     ))}
                   </TableRow>
