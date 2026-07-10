@@ -73,7 +73,17 @@ export function QueryWorkbench({
   >();
 
   function handleRunQuery() {
-    onRunQuery();
+    const selected = window.__openSqlWorkbenchEditor?.getSelection();
+    if (selected && selected.trim()) {
+      // Fire selection to queryText so the ref-based override captures it,
+      // run, then restore full text without losing editor state.
+      onQueryTextChange(selected);
+      onRunQuery();
+      // Restore after run picks up the override ref
+      setTimeout(() => onQueryTextChange(queryText), 0);
+    } else {
+      onRunQuery();
+    }
   }
 
   function handleFormatQuery() {
