@@ -179,8 +179,15 @@ export function ResultsTable({
     setSortConfig(null);
     setColumnFilters({});
     setSearchText("");
+    setScrollTop(0);
   }, [entityName]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (isLoading) {
+      setScrollTop(0);
+    }
+  }, [isLoading]);
   const visibleColumns = useMemo(
     () => (columns.length > 0 ? columns : buildFallbackColumns(rows)),
     [columns, rows],
@@ -433,7 +440,7 @@ export function ResultsTable({
     resizeObserver.observe(scrollContainer);
 
     return () => resizeObserver.disconnect();
-  }, [visibleRows.length]);
+  }, [visibleRows.length, isLoading]);
 
   return (
     <TooltipProvider>
