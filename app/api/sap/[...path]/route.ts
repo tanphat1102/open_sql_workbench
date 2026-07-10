@@ -194,8 +194,9 @@ async function handleProxy(
     // 2. For write requests, fetch a fresh CSRF token with the user's SAP cookies.
     if (["POST", "PUT", "DELETE"].includes(method)) {
       // Use the service root as the token source for the SQL Workbench service.
-      const csrfPath = targetPath.includes("ZSQLWB_ODATA_SRV")
-        ? "opu/odata/sap/ZSQLWB_ODATA_SRV/"
+      const pkg = process.env.SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV";
+      const csrfPath = targetPath.includes(pkg)
+        ? `opu/odata/sap/${pkg}/`
         : targetPath;
 
       const csrfRes = await axios.get(
