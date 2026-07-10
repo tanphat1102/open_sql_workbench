@@ -20,6 +20,7 @@ declare global {
     __openSqlWorkbenchEditor?: {
       setValue: (value: string) => void;
       getValue: () => string;
+      getSelection: () => string;
     };
   }
 }
@@ -1318,14 +1319,19 @@ export function SqlEditor({
       void updateDynamicMarkers(model);
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      window.__openSqlWorkbenchEditor = {
-        setValue: (nextValue: string) => {
-          editorRef.current?.setValue(nextValue);
-        },
-        getValue: () => editorRef.current?.getValue() ?? "",
-      };
-    }
+    window.__openSqlWorkbenchEditor = {
+      setValue: (nextValue: string) => {
+        editorRef.current?.setValue(nextValue);
+      },
+      getValue: () => editorRef.current?.getValue() ?? "",
+      getSelection: () => {
+        const ed = editorRef.current;
+        if (!ed) return "";
+        const selection = ed.getSelection();
+        if (!selection || selection.isEmpty()) return "";
+        return ed.getModel()?.getValueInRange(selection) ?? "";
+      },
+    };
 
     return () => {
       editorDomNode?.removeEventListener("wheel", handleEditorWheel);
