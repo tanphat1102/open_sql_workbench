@@ -10,6 +10,7 @@ import type {
   WorkbenchTemplate,
 } from "@/types/workbench";
 import { jsonrepair } from "jsonrepair";
+import { toast } from "@/lib/toast";
 import { sapClient } from "@/services/sapClient";
 import { sqlAssistService } from "@/services/sqlAssistService";
 import type {
@@ -607,6 +608,30 @@ function unwrapRunQueryResult(payload: SapRunQueryEnvelope) {
   return data as SapRunQueryResult;
 }
 
+function assertSapSuccess(result: SapRunQueryResult, operationName: string) {
+  const status = (result.Status ?? "").toString().toUpperCase();
+  if (status && status !== "SUCCESS") {
+    if (status === "BLOCKED") {
+      toast({
+        title: `Error Code: ${result.ErrorCode || "BLOCKED"}`,
+        description: result.ErrorText || "Query blocked by SAP",
+        variant: "destructive",
+      });
+    }
+
+    throw Object.assign(
+      new Error(
+        result.ErrorText || `${operationName} failed with status ${result.Status}`,
+      ),
+      {
+        status: 400,
+        sapStatus: result.Status,
+        sapErrorCode: result.ErrorCode,
+      },
+    );
+  }
+}
+
 function unwrapPreviewTableResult(payload: SapPreviewTableEnvelope) {
   const data = payload.d;
 
@@ -851,19 +876,7 @@ async function executeLiveRunQuery(
     await sapClient.request<SapRunQueryEnvelope>(queryPath, { method: "POST" }),
   );
 
-  const status = (result.Status ?? "").toString().toUpperCase();
-  if (status && status !== "SUCCESS") {
-    throw Object.assign(
-      new Error(
-        result.ErrorText || `RunQuery failed with status ${result.Status}`,
-      ),
-      {
-        status: 400,
-        sapStatus: result.Status,
-        sapErrorCode: result.ErrorCode,
-      },
-    );
-  }
+  assertSapSuccess(result, "RunQuery");
 
   const resultId = result.ResultId?.trim();
 
@@ -949,19 +962,7 @@ async function executeLivePreviewTable(
     }),
   );
 
-  const status = (result.Status ?? "").toString().toUpperCase();
-  if (status && status !== "SUCCESS") {
-    throw Object.assign(
-      new Error(
-        result.ErrorText || `PreviewTable failed with status ${result.Status}`,
-      ),
-      {
-        status: 400,
-        sapStatus: result.Status,
-        sapErrorCode: result.ErrorCode,
-      },
-    );
-  }
+  assertSapSuccess(result, "PreviewTable");
 
   const resultId = result.ResultId?.trim();
 
