@@ -183,11 +183,13 @@ export function ResultsTable({
   }, [entityName]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (isLoading) {
       setScrollTop(0);
     }
   }, [isLoading]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const visibleColumns = useMemo(
     () => (columns.length > 0 ? columns : buildFallbackColumns(rows)),
     [columns, rows],

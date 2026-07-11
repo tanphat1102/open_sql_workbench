@@ -48,6 +48,7 @@ export function SavedQueriesDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [saveQueryText, setSaveQueryText] = useState("");
   const [saveVisibility, setSaveVisibility] = useState("PRIVATE");
   const [saveTags, setSaveTags] = useState("");
   const [saveDescription, setSaveDescription] = useState("");
@@ -71,6 +72,7 @@ export function SavedQueriesDialog({
   useEffect(() => {
     if (!open) return;
     setShowSaveForm(false);
+    setSaveQueryText("");
     setIsLoading(true);
     setError(null);
     sqlAssistService
@@ -86,12 +88,12 @@ export function SavedQueriesDialog({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleSave() {
-    if (!saveName.trim() || !currentQueryText.trim()) return;
+    if (!saveName.trim() || !saveQueryText.trim()) return;
     setIsSaving(true);
     try {
       const result = await sqlAssistService.saveQuery({
         queryName: saveName.trim(),
-        queryText: currentQueryText,
+        queryText: saveQueryText,
         visibility: saveVisibility,
         tags: saveTags.trim(),
         description: saveDescription.trim(),
@@ -164,7 +166,12 @@ export function SavedQueriesDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowSaveForm((v) => !v)}
+                  onClick={() => {
+                    setShowSaveForm((v) => {
+                      if (!v) setSaveQueryText(currentQueryText);
+                      return !v;
+                    });
+                  }}
                   className="border-border text-primary"
                 >
                   <Bookmark className="size-3.5" />
@@ -186,6 +193,18 @@ export function SavedQueriesDialog({
 
         {showSaveForm ? (
           <div className="space-y-3 border-b border-border bg-accent/30 p-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                SQL Text
+              </label>
+              <textarea
+                value={saveQueryText}
+                onChange={(e) => setSaveQueryText(e.target.value)}
+                className="h-16 w-full resize-y rounded border border-input bg-white px-2.5 py-1.5 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25"
+                placeholder="SELECT * FROM ..."
+                spellCheck={false}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -242,7 +261,7 @@ export function SavedQueriesDialog({
                 type="button"
                 size="sm"
                 onClick={() => void handleSave()}
-                disabled={!saveName.trim() || !currentQueryText.trim() || isSaving}
+                disabled={!saveName.trim() || !saveQueryText.trim() || isSaving}
                 className="bg-primary text-primary-foreground"
               >
                 {isSaving ? (
@@ -289,7 +308,10 @@ export function SavedQueriesDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowSaveForm(true)}
+                  onClick={() => {
+                    setSaveQueryText(currentQueryText);
+                    setShowSaveForm(true);
+                  }}
                 >
                   Save current query
                 </Button>
