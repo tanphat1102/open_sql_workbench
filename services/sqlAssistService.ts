@@ -107,10 +107,49 @@ export const sqlAssistService = {
     return data as SapSaveQueryResult;
   },
 
-  deleteSavedQuery: async (profileId: string, queryId: string) => {
-    return sapClient.request(
-      `${servicePath}/SqlwbSavedQuerySet(QueryId=${quoteODataString(queryId)},ProfileId=${quoteODataString(profileId)})`,
-      { method: "DELETE" },
+  updateSavedQuery: async (params: {
+    profileId?: string;
+    queryId: string;
+    queryName: string;
+    queryText: string;
+    visibility?: string;
+    tags?: string;
+    description?: string;
+  }): Promise<SapSaveQueryResult> => {
+    const pid = params.profileId ?? queryProfileId;
+    const qs = new URLSearchParams({
+      ProfileId: quoteODataString(pid),
+      QueryId: quoteODataString(params.queryId),
+      QueryName: quoteODataString(params.queryName),
+      QueryText: quoteODataString(params.queryText),
+      Visibility: quoteODataString(params.visibility ?? ""),
+      Tags: quoteODataString(params.tags ?? ""),
+      Description: quoteODataString(params.description ?? ""),
+    });
+    const response = await sapClient.request<SapSaveQueryEnvelope>(
+      `${servicePath}/UpdateSavedQuery?${qs.toString()}`,
+      { method: "POST" },
     );
+    const data = response.d;
+    if (!data) return {};
+    if ("UpdateSavedQuery" in data && data.UpdateSavedQuery) return data.UpdateSavedQuery;
+    if ("SaveQuery" in data && data.SaveQuery) return data.SaveQuery;
+    return data as SapSaveQueryResult;
+  },
+
+  deleteSavedQuery: async (queryId: string, profileId?: string) => {
+    const pid = profileId ?? queryProfileId;
+    const qs = new URLSearchParams({
+      ProfileId: quoteODataString(pid),
+      QueryId: quoteODataString(queryId),
+    });
+    const response = await sapClient.request<SapSaveQueryEnvelope>(
+      `${servicePath}/DeleteSavedQuery?${qs.toString()}`,
+      { method: "POST" },
+    );
+    const data = response.d;
+    if (!data) return {};
+    if ("DeleteSavedQuery" in data && data.DeleteSavedQuery) return data.DeleteSavedQuery;
+    return data as SapSaveQueryResult;
   },
 };
