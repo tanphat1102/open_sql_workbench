@@ -40,9 +40,11 @@ function Toast({
       data-slot="toast"
       data-variant={variant}
       className={cn(
-        "group pointer-events-auto relative flex w-full items-start justify-between gap-3 overflow-hidden rounded-md border border-border bg-white p-4 pr-8 text-foreground shadow-lg transition-all data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:animate-in data-[state=open]:slide-in-from-top-full data-[state=closed]:slide-out-to-right-full sm:data-[state=open]:slide-in-from-bottom-full",
+        "group pointer-events-auto relative flex w-full items-start justify-between gap-3 overflow-hidden rounded-md border p-4 pr-8 shadow-lg transition-all",
+        "bg-white text-foreground border-border",
+        "data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:animate-in data-[state=open]:slide-in-from-top-full data-[state=closed]:slide-out-to-right-full sm:data-[state=open]:slide-in-from-bottom-full",
         variant === "destructive" &&
-          "border-destructive/30 bg-destructive/10 text-destructive",
+          "border-red-200 bg-red-50 text-red-900",
         variant === "success" &&
           "border-emerald-200 bg-emerald-50 text-emerald-950",
         className,
