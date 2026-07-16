@@ -27,209 +27,17 @@ const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQ
 const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
 
 const metrics: WorkbenchMetric[] = [
-  {
-    label: "Entity sets",
-    value: "8",
-    detail: "available in the demo catalog",
-  },
-  {
-    label: "Saved templates",
-    value: "5",
-    detail: "reusable query patterns",
-  },
-  {
-    label: "Proxy status",
-    value: "Ready",
-    detail: "requests routed through /api/sap",
-  },
+  { label: "Entity sets", value: "0", detail: "Loading..." },
+  { label: "Saved templates", value: "1", detail: "SELECT * FROM <entity>" },
+  { label: "Proxy status", value: "Ready", detail: "requests routed through /api/sap" },
 ];
 
-const entities: WorkbenchEntity[] = [
-  {
-    name: "ZCUSTOMER_SRV",
-    description: "Customer master data with sales summary fields.",
-    recordCount: 128,
-    keyFields: ["CustomerId"],
-    tags: ["Master Data", "Sales"],
-    lastSyncedRaw: "/Date(1716200000000)/",
-  },
-  {
-    name: "ZORDER_SRV",
-    description: "Open order snapshot with status and amount values.",
-    recordCount: 342,
-    keyFields: ["OrderId"],
-    tags: ["Transactions", "Fulfillment"],
-    lastSyncedRaw: "/Date(1716286400000)/",
-  },
-  {
-    name: "ZINVENTORY_SRV",
-    description: "Warehouse stock levels by material and location.",
-    recordCount: 96,
-    keyFields: ["MaterialId", "Plant"],
-    tags: ["Logistics", "Stock"],
-    lastSyncedRaw: "/Date(1716372800000)/",
-  },
-  {
-    name: "ZVENDOR_SRV",
-    description: "Supplier directory and risk indicators.",
-    recordCount: 64,
-    keyFields: ["VendorId"],
-    tags: ["Procurement", "Master Data"],
-    lastSyncedRaw: "/Date(1716459200000)/",
-  },
+const emptyEntities: WorkbenchEntity[] = [];
+const emptyTemplates: WorkbenchTemplate[] = [
+  { id: "default", name: "Preview", description: "Preview top rows.", query: "SELECT * FROM <entity>" },
 ];
-
-const templates: WorkbenchTemplate[] = [
-  {
-    id: "preview",
-    name: "Preview top rows",
-    description: "Load the first slice of the selected entity.",
-    query: "SELECT TOP 25 * FROM <entity>",
-  },
-  {
-    id: "counts",
-    name: "Count records",
-    description: "Produce a quick aggregate before drilling in.",
-    query: "SELECT COUNT(*) FROM <entity>",
-  },
-  {
-    id: "keys",
-    name: "Inspect keys",
-    description: "Show the identifier fields for the target object.",
-    query: "DESCRIBE KEYS FOR <entity>",
-  },
-  {
-    id: "freshness",
-    name: "Check freshness",
-    description: "Verify the latest synchronization metadata.",
-    query: "SHOW LAST SYNC FOR <entity>",
-  },
-  {
-    id: "filter",
-    name: "Apply filter",
-    description: "Start from a reusable filtered query shape.",
-    query: "SELECT * FROM <entity> WHERE status = 'OPEN'",
-  },
-];
-
-const rowsByEntity: Record<string, WorkbenchRow[]> = {
-  ZCUSTOMER_SRV: [
-    {
-      CustomerId: "C-10023",
-      CustomerName: "Northwind Consumer Products",
-      Segment: "Retail",
-      Revenue: 48210.25,
-      Active: true,
-    },
-    {
-      CustomerId: "C-10411",
-      CustomerName: "Blue Peak Distribution",
-      Segment: "Wholesale",
-      Revenue: 38940.0,
-      Active: true,
-    },
-    {
-      CustomerId: "C-10987",
-      CustomerName: "Metro Supply House",
-      Segment: "Industrial",
-      Revenue: 12988.45,
-      Active: false,
-    },
-  ],
-  ZORDER_SRV: [
-    {
-      OrderId: "O-88021",
-      Status: "OPEN",
-      Amount: 1125.5,
-      Currency: "EUR",
-      DeliveryDate: "2026-05-26",
-    },
-    {
-      OrderId: "O-88045",
-      Status: "IN PROCESS",
-      Amount: 8420.0,
-      Currency: "EUR",
-      DeliveryDate: "2026-05-28",
-    },
-    {
-      OrderId: "O-88112",
-      Status: "BLOCKED",
-      Amount: 212.75,
-      Currency: "EUR",
-      DeliveryDate: "2026-05-30",
-    },
-  ],
-  ZINVENTORY_SRV: [
-    {
-      MaterialId: "MAT-4410",
-      Plant: "1000",
-      Available: 1280,
-      Reserved: 240,
-      Unit: "EA",
-    },
-    {
-      MaterialId: "MAT-4411",
-      Plant: "1000",
-      Available: 540,
-      Reserved: 85,
-      Unit: "EA",
-    },
-    {
-      MaterialId: "MAT-8821",
-      Plant: "2000",
-      Available: 92,
-      Reserved: 11,
-      Unit: "EA",
-    },
-  ],
-  ZVENDOR_SRV: [
-    {
-      VendorId: "V-1020",
-      VendorName: "Triton Components",
-      Country: "DE",
-      RiskScore: 18,
-      Active: true,
-    },
-    {
-      VendorId: "V-1044",
-      VendorName: "Central Fabrication",
-      Country: "CZ",
-      RiskScore: 42,
-      Active: true,
-    },
-    {
-      VendorId: "V-1181",
-      VendorName: "Eastern Logistics Group",
-      Country: "PL",
-      RiskScore: 63,
-      Active: false,
-    },
-  ],
-};
-
-const activity: WorkbenchActivity[] = [
-  {
-    id: "activity-1",
-    title: "Proxy connected",
-    detail: "SAP cookies are forwarded through the Next.js route handler.",
-    timestampRaw: "/Date(1716485600000)/",
-    tone: "success",
-  },
-  {
-    id: "activity-2",
-    title: "Template applied",
-    detail: "The preview query was prepared for the selected entity set.",
-    timestampRaw: "/Date(1716489200000)/",
-    tone: "info",
-  },
-  {
-    id: "activity-3",
-    title: "Schema refreshed",
-    detail: "Entity metadata and key fields were reloaded for inspection.",
-    timestampRaw: "/Date(1716492800000)/",
-    tone: "warning",
-  },
-];
+const emptyRowsByEntity: Record<string, WorkbenchRow[]> = {};
+const emptyActivity: WorkbenchActivity[] = [];
 
 type SnapshotLoadResult = {
   snapshot: WorkbenchSnapshot;
@@ -378,10 +186,7 @@ function createEntityNameResolver(
       return entityName;
     }
 
-    return (
-      canonicalNames.get(trimmedName.toLowerCase()) ??
-      entityName
-    );
+    return canonicalNames.get(trimmedName.toLowerCase()) ?? entityName;
   };
 }
 
@@ -492,7 +297,10 @@ function buildPageInfo(
   );
   const totalPages = Math.max(
     totalRows > 0 ? 1 : 0,
-    normalizeNumber(result.TotalPages, pageSize > 0 ? Math.ceil(totalRows / pageSize) : 0),
+    normalizeNumber(
+      result.TotalPages,
+      pageSize > 0 ? Math.ceil(totalRows / pageSize) : 0,
+    ),
   );
 
   return {
@@ -621,7 +429,8 @@ function assertSapSuccess(result: SapRunQueryResult, operationName: string) {
 
     throw Object.assign(
       new Error(
-        result.ErrorText || `${operationName} failed with status ${result.Status}`,
+        result.ErrorText ||
+          `${operationName} failed with status ${result.Status}`,
       ),
       {
         status: 400,
@@ -769,9 +578,7 @@ async function loadPageChunkBatch(
 ) {
   const response = await sapClient.requestRawJson<
     SapODataEnvelope<SapSqlwbPageChunk>
-  >(
-    buildPageChunkSetPath(resultId, page, options),
-  );
+  >(buildPageChunkSetPath(resultId, page, options));
   const chunks = getODataResults(response.data);
 
   return {
@@ -804,10 +611,14 @@ async function loadResultRows(
   const debugResponses: WorkbenchDebugResponse[] = [];
 
   for (let batchIndex = 0; batchIndex < maxChunkBatches; batchIndex += 1) {
-    const { chunks: batch, debugResponse } = await loadPageChunkBatch(resultId, page, {
-      top: chunkBatchSize,
-      skip: batchIndex * chunkBatchSize,
-    });
+    const { chunks: batch, debugResponse } = await loadPageChunkBatch(
+      resultId,
+      page,
+      {
+        top: chunkBatchSize,
+        skip: batchIndex * chunkBatchSize,
+      },
+    );
     debugResponses.push(debugResponse);
 
     if (batch.length === 0) {
@@ -893,7 +704,9 @@ async function executeLiveRunQuery(
 
   if (totalPages > 0 && page > totalPages) {
     throw Object.assign(
-      new Error(`Requested page ${page} is greater than total pages ${totalPages}`),
+      new Error(
+        `Requested page ${page} is greater than total pages ${totalPages}`,
+      ),
       {
         status: 400,
         sapStatus: result.Status,
@@ -903,12 +716,10 @@ async function executeLiveRunQuery(
   }
 
   const reusedColumns = options.reuseColumns;
-  const {
-    columns: sapColumns,
-    debugResponses: columnDebugResponses,
-  } = reusedColumns
-    ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
-    : await loadResultColumns(resultId);
+  const { columns: sapColumns, debugResponses: columnDebugResponses } =
+    reusedColumns
+      ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
+      : await loadResultColumns(resultId);
   const entitySetName = result.ObjectName || queryPlan.entitySetName;
   const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
     resultId,
@@ -976,12 +787,10 @@ async function executeLivePreviewTable(
 
   const page = Math.max(1, normalizeNumber(result.Page, pageNumber));
   const reusedColumns = options.reuseColumns;
-  const {
-    columns: sapColumns,
-    debugResponses: columnDebugResponses,
-  } = reusedColumns
-    ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
-    : await loadResultColumns(resultId);
+  const { columns: sapColumns, debugResponses: columnDebugResponses } =
+    reusedColumns
+      ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
+      : await loadResultColumns(resultId);
   const entitySetName = result.ObjectName || objectName;
   const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
     resultId,
@@ -1105,7 +914,8 @@ function mapSearchTableToEntity(
   }
 
   const objectType = table.ObjectType?.trim() || "TABLE";
-  const description = table.Description?.trim() || `${objectType} ${objectName}`;
+  const description =
+    table.Description?.trim() || `${objectType} ${objectName}`;
 
   return {
     name: objectName,
@@ -1131,7 +941,7 @@ async function buildLiveSnapshot(): Promise<WorkbenchSnapshot> {
   return {
     metrics,
     entities,
-    templates,
+    templates: emptyTemplates,
     rowsByEntity,
     activity: [
       {
@@ -1144,7 +954,6 @@ async function buildLiveSnapshot(): Promise<WorkbenchSnapshot> {
         timestampRaw: `/Date(${Date.now()})/`,
         tone: "success",
       },
-      ...activity,
     ],
   };
 }
@@ -1152,15 +961,11 @@ async function buildLiveSnapshot(): Promise<WorkbenchSnapshot> {
 function getFallbackSnapshot(): WorkbenchSnapshot {
   return {
     metrics,
-    entities,
-    templates,
-    rowsByEntity,
-    activity,
+    entities: emptyEntities,
+    templates: emptyTemplates,
+    rowsByEntity: emptyRowsByEntity,
+    activity: [],
   };
-}
-
-function cloneRows(rows: WorkbenchRow[]) {
-  return rows.map((row) => ({ ...row }));
 }
 
 export const workbenchService = {
@@ -1180,8 +985,7 @@ export const workbenchService = {
     }
   },
 
-  getRowsForEntity: (entityName: string) =>
-    cloneRows(rowsByEntity[entityName] ?? []),
+  getRowsForEntity: () => [] as WorkbenchRow[],
 
   executeQuery: async (
     queryText: string,
