@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { workbenchService } from "@/services/workbenchService";
+import { getErrorCodeLabel } from "@/lib/sapParser";
+import { toast } from "@/lib/toast";
 import type {
+  WorkbenchActivity,
   WorkbenchColumn,
   WorkbenchDebugResponse,
   WorkbenchPageInfo,
   WorkbenchRow,
   WorkbenchTemplate,
 } from "@/types/workbench";
-
-const snapshot = workbenchService.getSnapshot();
-const defaultEntity = snapshot.entities[0]?.name ?? "";
 
 function buildTemplateQuery(template: WorkbenchTemplate, entityName: string) {
   return template.query.replace("<entity>", entityName);
@@ -48,7 +49,8 @@ function getErrorDetail(error: unknown, fallback: string) {
     parts.push(`SAP Status: ${extra.sapStatus}`);
   }
   if (typeof extra.sapErrorCode === "string" && extra.sapErrorCode) {
-    parts.push(`Error Code: ${extra.sapErrorCode}`);
+    const label = getErrorCodeLabel(extra.sapErrorCode);
+    parts.push(label !== extra.sapErrorCode ? `${label} (${extra.sapErrorCode})` : `Error Code: ${extra.sapErrorCode}`);
   }
 
   return parts.join("\n");
@@ -100,130 +102,91 @@ function getResultPageCacheKey(cacheKey: string, page: number) {
 }
 
 export function useWorkbench() {
-  const [selectedEntityName, setSelectedEntityName] = useState(defaultEntity);
-  const [queryText, setQueryText] = useState(
-    buildTemplateQuery(snapshot.templates[0], defaultEntity),
-  );
-  const [isRunning, setIsRunning] = useState(false);
+  const [selectedEntityName, setSelectedEntityName] = useState("");
+  const [queryText, setQueryText] = useState("");
   const [previewingEntityName, setPreviewingEntityName] = useState("");
-  const [activeTemplateId, setActiveTemplateId] = useState(
-    snapshot.templates[0]?.id ?? "",
-  );
-  const [entities, setEntities] = useState(snapshot.entities);
-  const [templates, setTemplates] = useState(snapshot.templates);
-  const [rowsByEntity, setRowsByEntity] = useState(snapshot.rowsByEntity);
-  const [activityEntries, setActivityEntries] = useState(snapshot.activity);
-  const [resultRows, setResultRows] = useState(
-    snapshot.rowsByEntity[defaultEntity] ?? [],
-  );
-  const [resultColumns, setResultColumns] = useState(
-    buildFallbackColumns(snapshot.rowsByEntity[defaultEntity] ?? []),
-  );
+  const [activeTemplateId, setActiveTemplateId] = useState("");
+  const [resultRows, setResultRows] = useState<WorkbenchRow[]>([]);
+  const [resultColumns, setResultColumns] = useState<WorkbenchColumn[]>([]);
   const [resultDebugResponses, setResultDebugResponses] = useState<
     WorkbenchDebugResponse[]
   >([]);
   const [resultPageInfo, setResultPageInfo] = useState<WorkbenchPageInfo>(
-    buildLocalPageInfo(snapshot.rowsByEntity[defaultEntity] ?? []),
+    buildLocalPageInfo([]),
   );
   const [resultSource, setResultSource] = useState<ResultSource>({
     type: "query",
   });
-  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
+  const [activityEntries, setActivityEntries] = useState<WorkbenchActivity[]>([]);
   const operationRef = useRef(0);
   const resultContextRef = useRef<ResultContext | null>(null);
   const pageCacheRef = useRef(new Map<string, ResultPageCacheEntry>());
   const queryTextOverrideRef = useRef<string | null>(null);
+  const entitiesInitializedRef = useRef(false);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadSnapshot() {
-      setIsLoadingSnapshot(true);
-
-      try {
-        const { snapshot: liveSnapshot, isLive } =
-          await workbenchService.loadSnapshot();
-
-        if (!isMounted) {
-          return;
-        }
-
-        setLoadError(
-          isLive
-            ? null
-            : "Unable to load live SAP data. Falling back to sample data.",
-        );
-        setEntities(liveSnapshot.entities);
-        setTemplates(liveSnapshot.templates);
-        setRowsByEntity(liveSnapshot.rowsByEntity);
-        setActivityEntries(liveSnapshot.activity);
-
-        if (liveSnapshot.entities.length > 0) {
-          setSelectedEntityName((currentName) => {
-            const nextName = liveSnapshot.entities.some(
-              (entity) => entity.name === currentName,
-            )
-              ? currentName
-              : liveSnapshot.entities[0].name;
-
-            const nextTemplate = liveSnapshot.templates[0];
-
-            if (nextTemplate) {
-              setQueryText(buildTemplateQuery(nextTemplate, nextName));
-            }
-
-            const nextRows = liveSnapshot.rowsByEntity[nextName] ?? [];
-            setResultRows(nextRows);
-            setResultColumns(buildFallbackColumns(nextRows));
-            setResultDebugResponses([]);
-            setResultPageInfo(buildLocalPageInfo(nextRows));
-
-            return nextName;
-          });
-        } else {
-          setSelectedEntityName("");
-          setQueryText("");
-          setResultRows([]);
-          setResultColumns([]);
-          setResultDebugResponses([]);
-          setResultPageInfo(buildLocalPageInfo([]));
-        }
-      } catch (err) {
-        if (getErrorStatus(err) === 401) {
-          setNeedLogin(true);
-          setIsLoadingSnapshot(false);
-          return;
-        }
-
-        // fallback to prior behavior
-        const { snapshot: liveSnapshot, isLive } =
-          await workbenchService.loadSnapshot();
-
-        if (!isMounted) {
-          return;
-        }
-
-        setLoadError(
-          isLive
-            ? null
-            : "Unable to load live SAP data. Falling back to sample data.",
-        );
-        setEntities(liveSnapshot.entities);
-        setTemplates(liveSnapshot.templates);
-        setRowsByEntity(liveSnapshot.rowsByEntity);
-        setActivityEntries(liveSnapshot.activity);
+  const {
+    data: snapshot,
+    isLoading: isLoadingSnapshot,
+    error: snapshotError,
+  } = useQuery({
+    queryKey: ["snapshot"],
+    queryFn: async () => {
+      const { snapshot: live, isLive } = await workbenchService.loadSnapshot();
+      if (live.entities.length === 0 && !isLive) {
+        throw new Error("No entities available from SAP. Check your connection and profile.");
       }
-      setIsLoadingSnapshot(false);
+      return { ...live, isLive };
+    },
+    staleTime: 60_000,
+  });
+
+  const entities = snapshot?.entities ?? [];
+  const templates = snapshot?.templates ?? [];
+  const rowsByEntity = snapshot?.rowsByEntity ?? {};
+  const loadError = snapshotError
+    ? snapshotError instanceof Error
+      ? snapshotError.message
+      : "Failed to load SAP data"
+    : snapshot?.isLive === false
+      ? "Unable to load live SAP data."
+      : null;
+
+  // Toast on snapshot load errors
+  useEffect(() => {
+    if (snapshotError) {
+      const msg =
+        snapshotError instanceof Error
+          ? snapshotError.message
+          : "Failed to load SAP entity data.";
+      toast({ title: "Connection error", description: msg.slice(0, 200), variant: "destructive" });
     }
+  }, [snapshotError]);
 
-    void loadSnapshot();
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // Initialize entity selection and activity from first snapshot load
+  useEffect(() => {
+    if (entities.length === 0 || entitiesInitializedRef.current) return;
+    entitiesInitializedRef.current = true;
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    const defaultEntity = entities[0].name;
+    const defaultTemplate = templates[0];
+    setSelectedEntityName(defaultEntity);
+    setActiveTemplateId(defaultTemplate?.id ?? "");
+    setQueryText(
+      defaultTemplate
+        ? buildTemplateQuery(defaultTemplate, defaultEntity)
+        : "",
+    );
+    const defaultRows = rowsByEntity[defaultEntity] ?? [];
+    setResultRows(defaultRows);
+    setResultColumns(buildFallbackColumns(defaultRows));
+
+    if (snapshot?.activity.length) {
+      setActivityEntries(snapshot.activity);
+    }
+  }, [entities, templates, rowsByEntity, snapshot]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const selectedEntity = useMemo(
     () => entities.find((entity) => entity.name === selectedEntityName),
@@ -232,61 +195,14 @@ export function useWorkbench() {
 
   const queryTemplates = templates;
 
-  const metrics = useMemo(() => {
-    const entityCount = entities.length;
-    const rowCount = resultRows.length;
-
-    return snapshot.metrics.map((metric) => {
-      if (metric.label === "Entity sets") {
-        return {
-          ...metric,
-          value: String(entityCount),
-        };
-      }
-
-      if (metric.label === "Saved templates") {
-        return {
-          ...metric,
-          value: String(queryTemplates.length),
-        };
-      }
-
-      if (metric.label === "Proxy status") {
-        return {
-          ...metric,
-          value: isLoadingSnapshot
-            ? "Loading"
-            : isRunning
-              ? "Running"
-              : "Ready",
-          detail: isLoadingSnapshot
-            ? (loadError ??
-              `Loading live entity sets from /api/sap/opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}`)
-            : isRunning
-              ? "Refreshing the current preview"
-              : `Showing ${rowCount} preview rows`,
-        };
-      }
-
-      return metric;
-    });
-  }, [
-    entities.length,
-    isLoadingSnapshot,
-    isRunning,
-    loadError,
-    queryTemplates.length,
-    resultRows.length,
-  ]);
-
   function handleEntityChange(entityName: string) {
     setSelectedEntityName(entityName);
     resultContextRef.current = null;
     pageCacheRef.current.clear();
 
     const nextTemplate =
-      snapshot.templates.find((template) => template.id === activeTemplateId) ??
-      snapshot.templates[0];
+      templates.find((template) => template.id === activeTemplateId) ??
+      templates[0];
     if (nextTemplate) {
       setQueryText(buildTemplateQuery(nextTemplate, entityName));
     }
@@ -422,175 +338,157 @@ export function useWorkbench() {
       });
   }
 
+  type ExecuteVars = {
+    type: "query" | "preview";
+    queryText: string;
+    entityName: string;
+    page?: number;
+  };
+
+  const executeMutation = useMutation({
+    onMutate: () => {
+      // Clear stale results so user sees loading state, not old cached data
+      setResultRows([]);
+      setResultDebugResponses([]);
+      resultContextRef.current = null;
+      pageCacheRef.current.clear();
+    },
+    mutationFn: async ({ type, queryText: qText, entityName, page = 1 }: ExecuteVars) => {
+      if (type === "preview") {
+        return workbenchService.previewTable(entityName, undefined, page, {
+          onProgress: (progress) => {
+            setResultRows(progress.rows);
+            setResultColumns(progress.columns);
+            setResultDebugResponses(progress.debugResponses);
+            setResultPageInfo(progress.pageInfo);
+            setResultSource({ type: "preview", entityName });
+            setSelectedEntityName(progress.entitySetName);
+          },
+        });
+      }
+      return workbenchService.executeQuery(
+        qText,
+        entityName,
+        entities.map((e) => e.name),
+        page,
+        {
+          onProgress: (progress) => {
+            setResultRows(progress.rows);
+            setResultColumns(progress.columns);
+            setResultDebugResponses(progress.debugResponses);
+            setResultPageInfo(progress.pageInfo);
+            setResultSource({ type: "query" });
+            setSelectedEntityName(progress.entitySetName);
+          },
+        },
+      );
+    },
+    onSuccess: (execution, vars) => {
+      setResultRows(execution.rows);
+      setResultColumns(execution.columns);
+      setResultDebugResponses(execution.debugResponses);
+      setResultPageInfo(execution.pageInfo);
+      setResultSource(
+        vars.type === "preview"
+          ? { type: "preview", entityName: vars.entityName }
+          : { type: "query" },
+      );
+      setSelectedEntityName(execution.entitySetName);
+      setResultContext(execution, vars.type === "preview" ? { type: "preview", entityName: vars.entityName } : { type: "query" });
+
+      const context = resultContextRef.current;
+      if (context) {
+        prefetchResultPage(context, execution.pageInfo.page + 1);
+      }
+
+      const label = vars.type === "preview" ? "Preview loaded" : "Query executed";
+      setActivityEntries((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          title: `${label} for ${execution.entitySetName}`,
+          detail: execution.isCountQuery
+            ? `Counted ${execution.rows[0]?.RecordCount ?? 0} records through ${execution.queryPath}`
+            : `Loaded page ${execution.pageInfo.page} with ${execution.rows.length} rows through ${execution.queryPath}`,
+          timestampRaw: "/Date(1716496400000)/",
+          tone: "success",
+        },
+        ...prev,
+      ]);
+    },
+    onError: (error, vars) => {
+      if (getErrorStatus(error) === 401) {
+        setNeedLogin(true);
+        return;
+      }
+      const detail = getErrorDetail(error, "Unable to execute live OData query.");
+      const label = vars.type === "preview" ? "Preview failed" : "Query failed";
+      toast({ title: label, description: detail.slice(0, 200), variant: "destructive" });
+      setActivityEntries((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          title: `${label} for ${vars.entityName}`,
+          detail,
+          timestampRaw: "/Date(1716496400000)/",
+          tone: "error",
+        },
+        ...prev,
+      ]);
+    },
+    onSettled: (_data, _error, vars) => {
+      if (vars.type === "preview") {
+        setPreviewingEntityName("");
+      }
+    },
+  });
+
+  const isRunning = executeMutation.isPending;
+
+  const metrics = useMemo(() => {
+    const entityCount = entities.length;
+    const rowCount = resultRows.length;
+    const pkg = process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV";
+
+    return [
+      { label: "Entity sets", value: String(entityCount), detail: `${entityCount} loaded` },
+      { label: "Saved templates", value: String(queryTemplates.length), detail: "query patterns" },
+      {
+        label: "Proxy status",
+        value: isLoadingSnapshot ? "Loading" : isRunning ? "Running" : "Ready",
+        detail: isLoadingSnapshot
+          ? `Loading entity sets from /api/sap/opu/odata/sap/${pkg}`
+          : isRunning
+            ? "Refreshing the current preview"
+            : `Showing ${rowCount} preview rows`,
+      },
+    ];
+  }, [
+    entities.length,
+    isLoadingSnapshot,
+    isRunning,
+    queryTemplates.length,
+    resultRows.length,
+  ]);
+
   function runQuery(page = 1) {
-    const operationId = operationRef.current + 1;
-    operationRef.current = operationId;
-    setIsRunning(true);
-    // Use selection override if set (user highlighted text in editor)
     const effectiveQuery = queryTextOverrideRef.current ?? queryText;
     queryTextOverrideRef.current = null;
-
-    void (async () => {
-      try {
-        const execution = await workbenchService.executeQuery(
-          effectiveQuery,
-          selectedEntityName,
-          entities.map((entity) => entity.name),
-          page,
-          {
-            onProgress: (progress) => {
-              if (operationRef.current !== operationId) {
-                return;
-              }
-
-              setResultRows(progress.rows);
-              setResultColumns(progress.columns);
-              setResultDebugResponses(progress.debugResponses);
-              setResultPageInfo(progress.pageInfo);
-              setResultSource({ type: "query" });
-              setSelectedEntityName(progress.entitySetName);
-            },
-          },
-        );
-
-        if (operationRef.current !== operationId) {
-          return;
-        }
-
-        setResultRows(execution.rows);
-        setResultColumns(execution.columns);
-        setResultDebugResponses(execution.debugResponses);
-        setResultPageInfo(execution.pageInfo);
-        setResultSource({ type: "query" });
-        setSelectedEntityName(execution.entitySetName);
-        setResultContext(execution, { type: "query" });
-
-        const context = resultContextRef.current;
-        if (context) {
-          prefetchResultPage(context, execution.pageInfo.page + 1);
-        }
-
-        setActivityEntries((currentEntries) => [
-          {
-            id: `activity-${Date.now()}`,
-            title: `Query executed for ${execution.entitySetName}`,
-            detail: execution.isCountQuery
-              ? `Counted ${execution.rows[0]?.RecordCount ?? 0} records through ${execution.queryPath}`
-              : `Loaded page ${execution.pageInfo.page} with ${execution.rows.length} rows through ${execution.queryPath}`,
-            timestampRaw: "/Date(1716496400000)/",
-            tone: "success",
-          },
-          ...currentEntries,
-        ]);
-      } catch (error) {
-        if (operationRef.current !== operationId) {
-          return;
-        }
-
-        // If auth error, prompt for login
-        if (getErrorStatus(error) === 401) {
-          setNeedLogin(true);
-        }
-        setActivityEntries((currentEntries) => [
-          {
-            id: `activity-${Date.now()}`,
-            title: `Query failed for ${selectedEntityName}`,
-            detail: getErrorDetail(error, "Unable to execute live OData query."),
-            timestampRaw: "/Date(1716496400000)/",
-            tone: "error",
-          },
-          ...currentEntries,
-        ]);
-      } finally {
-        if (operationRef.current === operationId) {
-          setIsRunning(false);
-        }
-      }
-    })();
+    executeMutation.mutate({
+      type: "query",
+      queryText: effectiveQuery,
+      entityName: selectedEntityName,
+      page,
+    });
   }
 
   function previewTable(entityName: string, page = 1) {
-    const operationId = operationRef.current + 1;
-    operationRef.current = operationId;
     setSelectedEntityName(entityName);
-    setIsRunning(true);
     setPreviewingEntityName(entityName);
-
-    void (async () => {
-      try {
-        const execution = await workbenchService.previewTable(
-          entityName,
-          undefined,
-          page,
-          {
-            onProgress: (progress) => {
-              if (operationRef.current !== operationId) {
-                return;
-              }
-
-              setResultRows(progress.rows);
-              setResultColumns(progress.columns);
-              setResultDebugResponses(progress.debugResponses);
-              setResultPageInfo(progress.pageInfo);
-              setResultSource({ type: "preview", entityName });
-              setSelectedEntityName(progress.entitySetName);
-            },
-          },
-        );
-
-        if (operationRef.current !== operationId) {
-          return;
-        }
-
-        setResultRows(execution.rows);
-        setResultColumns(execution.columns);
-        setResultDebugResponses(execution.debugResponses);
-        setResultPageInfo(execution.pageInfo);
-        setResultSource({ type: "preview", entityName });
-        setSelectedEntityName(execution.entitySetName);
-        setResultContext(execution, { type: "preview", entityName });
-
-        const context = resultContextRef.current;
-        if (context) {
-          prefetchResultPage(context, execution.pageInfo.page + 1);
-        }
-
-        setActivityEntries((currentEntries) => [
-          {
-            id: `activity-${Date.now()}`,
-            title: `Preview loaded for ${execution.entitySetName}`,
-            detail: `Loaded preview page ${execution.pageInfo.page} with ${execution.rows.length} rows through ${execution.queryPath}`,
-            timestampRaw: "/Date(1716496400000)/",
-            tone: "success",
-          },
-          ...currentEntries,
-        ]);
-      } catch (error) {
-        if (operationRef.current !== operationId) {
-          return;
-        }
-
-        if (getErrorStatus(error) === 401) {
-          setNeedLogin(true);
-        }
-
-        setActivityEntries((currentEntries) => [
-          {
-            id: `activity-${Date.now()}`,
-            title: `Preview failed for ${entityName}`,
-            detail: getErrorDetail(error, "Unable to preview the selected SAP table."),
-            timestampRaw: "/Date(1716496400000)/",
-            tone: "error",
-          },
-          ...currentEntries,
-        ]);
-      } finally {
-        if (operationRef.current === operationId) {
-          setIsRunning(false);
-          setPreviewingEntityName("");
-        }
-      }
-    })();
+    executeMutation.mutate({
+      type: "preview",
+      queryText: "",
+      entityName,
+      page,
+    });
   }
 
   function loadResultPage(page: number) {
@@ -634,7 +532,6 @@ export function useWorkbench() {
 
     const operationId = operationRef.current + 1;
     operationRef.current = operationId;
-    setIsRunning(true);
 
     void (async () => {
       try {
@@ -709,9 +606,7 @@ export function useWorkbench() {
 
         runQuery(page);
       } finally {
-        if (operationRef.current === operationId) {
-          setIsRunning(false);
-        }
+        // mutation handles loading state
       }
     })();
   }
