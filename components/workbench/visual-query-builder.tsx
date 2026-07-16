@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { CornerDownRight, Plus, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -458,12 +459,25 @@ export function VisualQueryBuilder({
   const [nodes, setNodes] = useState<BuilderNode[]>([]);
   const [joins, setJoins] = useState<BuilderJoin[]>([]);
   const [filters, setFilters] = useState<BuilderFilter[]>([]);
-  const [fieldsByEntity, setFieldsByEntity] = useState<
-    Record<string, SapSqlwbField[]>
-  >({});
-  const [loadingFields, setLoadingFields] = useState<Record<string, boolean>>(
-    {},
-  );
+  // Fetch fields for all active nodes via TanStack Query (cached per entity)
+  const entityFieldQueries = useQueries({
+    queries: nodes.map((node) => ({
+      queryKey: ["entityFields", node.entityName],
+      queryFn: () => sqlAssistService.getFields(node.entityName),
+      staleTime: 5 * 60_000,
+      enabled: true,
+    })),
+  });
+  const fieldsByEntity: Record<string, SapSqlwbField[]> = {};
+  const loadingFields: Record<string, boolean> = {};
+  for (let i = 0; i < nodes.length; i++) {
+    const entityName = nodes[i].entityName;
+    const query = entityFieldQueries[i];
+    if (query.data) {
+      fieldsByEntity[entityName] = query.data.filter((f) => getFieldName(f));
+    }
+    loadingFields[entityName] = query.isLoading;
+  }
   const [activeDragNodeId, setActiveDragNodeId] = useState("");
   const dragSessionRef = useRef<NodeDragSession | null>(null);
 
@@ -501,38 +515,9 @@ export function VisualQueryBuilder({
     [effectiveJoins, filters, nodes],
   );
 
-  async function ensureFields(entityName: string) {
-    if (fieldsByEntity[entityName] || loadingFields[entityName]) {
-      return;
-    }
-
-    setLoadingFields((current) => ({ ...current, [entityName]: true }));
-
-    try {
-      const fields = await sqlAssistService.getFields(entityName);
-      setFieldsByEntity((current) => ({
-        ...current,
-        [entityName]: fields.filter((field) => getFieldName(field)),
-      }));
-    } catch (error) {
-      console.warn(`Unable to load fields for ${entityName}`, error);
-      toast({
-        title: "Field metadata unavailable",
-        description: `${entityName} fields could not be loaded.`,
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingFields((current) => {
-        const next = { ...current };
-        delete next[entityName];
-        return next;
-      });
-    }
-  }
+  // ponytail: fields auto-loaded by useQueries above, no manual ensureFields needed
 
   function addNode(entityName: string, x?: number, y?: number) {
-    void ensureFields(entityName);
-
     if (nodes.some((node) => node.entityName === entityName)) {
       return;
     }
@@ -933,7 +918,7 @@ export function VisualQueryBuilder({
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_320px]">
         <div
           className={cn(
-            "relative min-h-[280px] overflow-hidden bg-[linear-gradient(#eef5fb_1px,transparent_1px),linear-gradient(90deg,#eef5fb_1px,transparent_1px)] bg-[size:24px_24px]",
+            "relative min-h-[400px] overflow-auto bg-[linear-gradient(#eef5fb_1px,transparent_1px),linear-gradient(90deg,#eef5fb_1px,transparent_1px)] bg-[size:24px_24px]",
             nodes.length === 0 && "grid place-items-center",
           )}
           onDragOver={(event) => event.preventDefault()}
