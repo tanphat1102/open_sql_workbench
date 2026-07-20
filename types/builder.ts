@@ -29,8 +29,9 @@ export type BuilderFilter = {
   id: string;
   nodeId: string;
   field: string;
-  operator: "=" | "<>" | ">" | ">=" | "<" | "<=" | "LIKE";
+  operator: "=" | "<>" | ">" | ">=" | "<" | "<=" | "LIKE" | "BETWEEN";
   value: string;
+  value2?: string;
   conjunction: "AND" | "OR";
 };
 
