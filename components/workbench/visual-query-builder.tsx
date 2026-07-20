@@ -274,16 +274,23 @@ function formatWhereValue(value: string) {
 
 function buildWhereClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
   const conditions = filters
-    .filter((filter) => filter.nodeId && filter.field && filter.value.trim())
+    .filter((filter) => {
+      if (!filter.nodeId || !filter.field) return false;
+      if (filter.operator === "BETWEEN") {
+        return filter.value.trim() && filter.value2?.trim();
+      }
+      return filter.value.trim();
+    })
     .map((filter, index) => {
       const node = nodes.find((item) => item.id === filter.nodeId);
       const fieldRef =
         nodes.length > 1 && node
           ? `${node.alias}~${filter.field}`
           : filter.field;
-      const condition = `${fieldRef} ${filter.operator} ${formatWhereValue(
-        filter.value,
-      )}`;
+      const condition =
+        filter.operator === "BETWEEN"
+          ? `${fieldRef} BETWEEN ${formatWhereValue(filter.value)} AND ${formatWhereValue(filter.value2 ?? "")}`
+          : `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value)}`;
 
       return index === 0 ? condition : `${filter.conjunction} ${condition}`;
     });
@@ -305,6 +312,7 @@ function buildSql(
       `SELECT ${buildSelectList(nodes)}`,
       `FROM ${nodes[0].entityName}`,
       buildWhereClause(nodes, filters),
+      buildOrderByClause(nodes),
     ]
       .filter(Boolean)
       .join("\n");
@@ -436,7 +444,10 @@ function isFilterValid(
   nodes: BuilderNode[],
   fieldsByEntity: Record<string, SapSqlwbField[]>,
 ) {
-  if (!filter.nodeId || !filter.field || !filter.value.trim()) {
+  if (!filter.nodeId || !filter.field) return false;
+  if (filter.operator === "BETWEEN") {
+    if (!filter.value.trim() || !filter.value2?.trim()) return false;
+  } else if (!filter.value.trim()) {
     return false;
   }
 
@@ -712,6 +723,7 @@ export function VisualQueryBuilder({
         field: "",
         operator: "=",
         value: "",
+        value2: "",
         conjunction: "AND",
       },
     ]);

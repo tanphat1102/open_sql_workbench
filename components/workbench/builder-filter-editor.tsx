@@ -109,14 +109,23 @@ export function BuilderFilterEditor({
             <SelectItem value="<">&lt;</SelectItem>
             <SelectItem value="<=">&lt;=</SelectItem>
             <SelectItem value="LIKE">LIKE</SelectItem>
+            <SelectItem value="BETWEEN">BETWEEN</SelectItem>
           </SelectContent>
         </Select>
         <Input
           value={filter.value}
           onChange={(event) => onUpdate({ value: event.target.value })}
-          placeholder="Value"
+          placeholder={filter.operator === "BETWEEN" ? "From" : "Value"}
           className="h-7"
         />
+        {filter.operator === "BETWEEN" ? (
+          <Input
+            value={filter.value2 ?? ""}
+            onChange={(event) => onUpdate({ value2: event.target.value })}
+            placeholder="To"
+            className="h-7"
+          />
+        ) : null}
       </div>
       {!isValid ? (
         <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
