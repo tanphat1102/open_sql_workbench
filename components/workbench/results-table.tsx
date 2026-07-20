@@ -663,7 +663,9 @@ export function ResultsTable({
           ) : visibleRows.length === 0 ? (
             <div className="m-3 rounded-lg border border-dashed border-[#b8d6ef] bg-accent p-8 text-center text-sm text-muted-foreground">
               {rows.length === 0
-                ? "No rows loaded yet. Run a query or switch to another entity."
+                ? pageInfo.page > 0
+                  ? `Query returned 0 rows for page ${pageInfo.page}.`
+                  : "No rows loaded yet. Run a query or switch to another entity."
                 : "No rows match the current search."}
             </div>
           ) : (
