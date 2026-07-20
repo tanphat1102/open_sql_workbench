@@ -627,7 +627,6 @@ export function useWorkbench() {
     setNeedLogin,
     activityEntries,
     resultColumns,
-    resultDebugResponses,
     resultPageInfo,
     resultRows,
     handleEntityChange,

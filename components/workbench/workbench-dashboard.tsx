@@ -85,7 +85,6 @@ export function WorkbenchDashboard() {
     isLoadingSnapshot,
     activityEntries,
     resultColumns,
-    resultDebugResponses,
     resultPageInfo,
     resultRows,
     previewingEntityName,
@@ -475,7 +474,6 @@ export function WorkbenchDashboard() {
                   <ResultsTable
                     entityName={selectedEntity?.name ?? selectedEntityName}
                     columns={resultColumns}
-                    debugResponses={resultDebugResponses}
                     pageInfo={resultPageInfo}
                     rows={resultRows}
                     isFullscreen={false}
@@ -512,8 +510,7 @@ export function WorkbenchDashboard() {
                 <ResultsTable
                   entityName={selectedEntity?.name ?? selectedEntityName}
                   columns={resultColumns}
-                  debugResponses={resultDebugResponses}
-                  pageInfo={resultPageInfo}
+pageInfo={resultPageInfo}
                   rows={resultRows}
                   isFullscreen={false}
                   isLoading={isRunning}
@@ -548,7 +545,6 @@ export function WorkbenchDashboard() {
           <ResultsTable
             entityName={selectedEntity?.name ?? selectedEntityName}
             columns={resultColumns}
-            debugResponses={resultDebugResponses}
             pageInfo={resultPageInfo}
             rows={resultRows}
             isFullscreen

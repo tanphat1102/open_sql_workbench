@@ -14,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  FileJson,
   FileSpreadsheet,
   LoaderCircle,
   Maximize2,
@@ -48,7 +47,6 @@ import {
 import { parseSapDate } from "@/lib/sapParser";
 import type {
   WorkbenchColumn,
-  WorkbenchDebugResponse,
   WorkbenchPageInfo,
   WorkbenchRow,
 } from "@/types/workbench";
@@ -56,7 +54,6 @@ import type {
 type ResultsTableProps = {
   entityName: string;
   columns: WorkbenchColumn[];
-  debugResponses: WorkbenchDebugResponse[];
   pageInfo: WorkbenchPageInfo;
   rows: WorkbenchRow[];
   isFullscreen?: boolean;
@@ -150,7 +147,6 @@ function buildFallbackColumns(rows: WorkbenchRow[]): WorkbenchColumn[] {
 export function ResultsTable({
   entityName,
   columns,
-  debugResponses,
   pageInfo,
   rows,
   isFullscreen = false,
@@ -164,8 +160,6 @@ export function ResultsTable({
   const [downloadingFormat, setDownloadingFormat] = useState<
     "xlsx" | "csv" | null
   >(null);
-  const [debugOpen, setDebugOpen] = useState(false);
-  const [selectedDebugIndex, setSelectedDebugIndex] = useState(0);
   const [isHeaderDragging, setIsHeaderDragging] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(480);
@@ -423,8 +417,6 @@ export function ResultsTable({
     }
   }
 
-  const selectedDebugResponse = debugResponses[selectedDebugIndex];
-
   useEffect(() => {
     const scrollContainer = tableScrollRef.current;
 
@@ -459,25 +451,6 @@ export function ResultsTable({
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={debugResponses.length === 0}
-                    onClick={() => {
-                      setSelectedDebugIndex(0);
-                      setDebugOpen(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-primary transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    <FileJson className="size-4" />
-                    SAP responses
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Inspect raw SAP ColumnSet and PageChunk responses.
-                </TooltipContent>
-              </Tooltip>
               <input
                 placeholder="Search"
                 className="rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
@@ -832,132 +805,6 @@ export function ResultsTable({
           </div>
         </div>
 
-        {debugOpen ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-lg border border-border bg-white shadow-xl">
-              <div className="flex items-start justify-between gap-3 border-b border-border p-4">
-                <div>
-                  <div className="text-base font-semibold text-foreground">
-                    SAP column and chunk responses
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    Raw response.text() captured by the FE through /api/sap.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDebugOpen(false)}
-                  className="rounded-md border border-border px-3 py-1.5 text-sm text-primary hover:bg-accent"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[280px_minmax(0,1fr)]">
-                <div className="min-h-0 border-b border-border p-3 md:border-r md:border-b-0">
-                  <div className="space-y-2">
-                    {debugResponses.map((response, index) => (
-                      <button
-                        key={`${response.label}-${index}`}
-                        type="button"
-                        onClick={() => setSelectedDebugIndex(index)}
-                        className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                          index === selectedDebugIndex
-                            ? "border-primary bg-accent text-primary"
-                            : "border-border bg-white text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        <div className="font-medium">{response.label}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {response.summary}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="min-h-0 space-y-3 overflow-auto p-4">
-                  {selectedDebugResponse ? (
-                    <>
-                      <div className="grid gap-2 text-sm md:grid-cols-5">
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            HTTP
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.status}
-                          </div>
-                        </div>
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            Browser Content-Length
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.contentLength || "-"}
-                          </div>
-                        </div>
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            SAP Content-Length
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.upstreamContentLength || "-"}
-                          </div>
-                        </div>
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            Received
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.receivedBytes} bytes /{" "}
-                            {selectedDebugResponse.receivedChars} chars
-                          </div>
-                        </div>
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            Proxy bytes
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.proxyBytes || "-"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2 text-sm md:grid-cols-2">
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            Summary
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.summary}
-                          </div>
-                        </div>
-                        <div className="rounded-md border border-border bg-accent p-3">
-                          <div className="text-xs text-muted-foreground">
-                            SAP Content-Type
-                          </div>
-                          <div className="font-medium">
-                            {selectedDebugResponse.upstreamContentType || "-"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-md border border-border bg-accent p-3 font-mono text-xs text-muted-foreground">
-                        {selectedDebugResponse.path}
-                      </div>
-
-                      <textarea
-                        readOnly
-                        value={selectedDebugResponse.body}
-                        className="h-[52vh] w-full resize-none rounded-md border border-border bg-white p-3 font-mono text-xs text-foreground outline-none"
-                      />
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
       </Card>
     </TooltipProvider>
   );
