@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
     const response = await axios.get(
       buildTargetUrl(
         process.env.SAP_BASE_URL || "",
-        `opu/odata/sap/${process.env.SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}/$metadata`,
+        `opu/odata/sap/${process.env.SAP_PACKAGE!}/$metadata`,
       ),
       {
         headers: {

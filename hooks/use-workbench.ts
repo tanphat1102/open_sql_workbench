@@ -446,7 +446,7 @@ export function useWorkbench() {
   const metrics = useMemo(() => {
     const entityCount = entities.length;
     const rowCount = resultRows.length;
-    const pkg = process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV";
+    const pkg = process.env.NEXT_PUBLIC_SAP_PACKAGE!;
 
     return [
       { label: "Entity sets", value: String(entityCount), detail: `${entityCount} loaded` },

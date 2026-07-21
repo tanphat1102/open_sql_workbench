@@ -23,18 +23,27 @@ import type {
   SapSqlwbTable,
 } from "@/types/sap";
 
-const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}`;
+const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE!}`;
 const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
 
 const metrics: WorkbenchMetric[] = [
   { label: "Entity sets", value: "0", detail: "Loading..." },
   { label: "Saved templates", value: "1", detail: "SELECT * FROM <entity>" },
-  { label: "Proxy status", value: "Ready", detail: "requests routed through /api/sap" },
+  {
+    label: "Proxy status",
+    value: "Ready",
+    detail: "requests routed through /api/sap",
+  },
 ];
 
 const emptyEntities: WorkbenchEntity[] = [];
 const emptyTemplates: WorkbenchTemplate[] = [
-  { id: "default", name: "Preview", description: "Preview top rows.", query: "SELECT * FROM <entity>" },
+  {
+    id: "default",
+    name: "Preview",
+    description: "Preview top rows.",
+    query: "SELECT * FROM <entity>",
+  },
 ];
 const emptyRowsByEntity: Record<string, WorkbenchRow[]> = {};
 const emptyActivity: WorkbenchActivity[] = [];

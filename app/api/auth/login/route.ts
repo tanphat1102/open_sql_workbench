@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
     const sapBase = normalizeSapBaseUrl(process.env.SAP_BASE_URL || "");
     const testEndpoint = buildTargetUrl(
       sapBase,
-      `opu/odata/sap/${process.env.SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}/$metadata`,
+      `opu/odata/sap/${process.env.SAP_PACKAGE!}/$metadata`,
     );
 
     // Build Basic Auth from the credentials entered by the developer.
