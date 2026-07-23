@@ -133,8 +133,13 @@ export function useWorkbench() {
     queryKey: ["snapshot"],
     queryFn: async () => {
       const { snapshot: live, isLive } = await workbenchService.loadSnapshot();
-      if (live.entities.length === 0 && !isLive) {
-        throw new Error("No entities available from SAP. Check your connection and profile.");
+      if (live.entities.length === 0) {
+        const pkg = process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "unknown";
+        throw new Error(
+          isLive
+            ? `No tables returned from ${pkg} for profile "${process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV"}". Check whitelist configuration.`
+            : `Cannot connect to SAP package ${pkg}. Check SAP_PACKAGE and connection.`,
+        );
       }
       return { ...live, isLive };
     },
