@@ -30,6 +30,7 @@ interface BuilderFieldSelectProps {
   onValueChange: (value: string) => void;
   placeholder: string;
   showKeyBadge?: boolean;
+  className?: string;
 }
 
 export function BuilderFieldSelect({
@@ -38,6 +39,7 @@ export function BuilderFieldSelect({
   onValueChange,
   placeholder,
   showKeyBadge = false,
+  className = "h-7",
 }: BuilderFieldSelectProps) {
   if (fields.length === 0) {
     return (
@@ -45,14 +47,14 @@ export function BuilderFieldSelect({
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         placeholder={placeholder}
-        className="h-7"
+        className={className}
       />
     );
   }
 
   return (
     <Select value={value || undefined} onValueChange={onValueChange}>
-      <SelectTrigger className="h-7">
+      <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

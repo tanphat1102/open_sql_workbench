@@ -37,27 +37,28 @@ export function BuilderFilterEditor({
 }: BuilderFilterEditorProps) {
   return (
     <div className="space-y-2 rounded-md border border-border bg-white p-2">
-      <div className="flex items-center justify-between gap-2">
-        {index > 0 ? (
-          <Select
-            value={filter.conjunction}
-            onValueChange={(value) =>
-              onUpdate({ conjunction: value as BuilderFilter["conjunction"] })
-            }
-          >
-            <SelectTrigger className="h-7 w-20">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="AND">AND</SelectItem>
-              <SelectItem value="OR">OR</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <Badge variant="outline" className="h-7 rounded">
-            WHERE
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1">
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+            {filter.clause ?? "WHERE"}
           </Badge>
-        )}
+          {index > 0 ? (
+            <Select
+              value={filter.conjunction}
+              onValueChange={(value) =>
+                onUpdate({ conjunction: value as BuilderFilter["conjunction"] })
+              }
+            >
+              <SelectTrigger className="h-6 w-14 text-[10px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AND">AND</SelectItem>
+                <SelectItem value="OR">OR</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
         <Button
           type="button"
           variant="ghost"
@@ -65,66 +66,84 @@ export function BuilderFilterEditor({
           onClick={onRemove}
           aria-label="Remove filter"
         >
-          <Trash2 />
+          <Trash2 className="size-3" />
         </Button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Select
-          value={filter.nodeId}
-          onValueChange={(nodeId) => onUpdate({ nodeId, field: "" })}
-        >
-          <SelectTrigger className="h-7">
-            <SelectValue placeholder="Object" />
-          </SelectTrigger>
-          <SelectContent>
-            {nodes.map((node) => (
-              <SelectItem key={node.id} value={node.id}>
-                {nodes.length > 1
-                  ? `${node.alias}: ${node.entityName}`
-                  : node.entityName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <BuilderFieldSelect
-          fields={nodeFields}
-          value={filter.field}
-          onValueChange={(field) => onUpdate({ field })}
-          placeholder="Field"
-        />
-        <Select
-          value={filter.operator}
-          onValueChange={(operator) =>
-            onUpdate({ operator: operator as BuilderFilter["operator"] })
-          }
-        >
-          <SelectTrigger className="h-7">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="=">=</SelectItem>
-            <SelectItem value="<>">&lt;&gt;</SelectItem>
-            <SelectItem value=">">&gt;</SelectItem>
-            <SelectItem value=">=">&gt;=</SelectItem>
-            <SelectItem value="<">&lt;</SelectItem>
-            <SelectItem value="<=">&lt;=</SelectItem>
-            <SelectItem value="LIKE">LIKE</SelectItem>
-            <SelectItem value="BETWEEN">BETWEEN</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input
-          value={filter.value}
-          onChange={(event) => onUpdate({ value: event.target.value })}
-          placeholder={filter.operator === "BETWEEN" ? "From" : "Value"}
-          className="h-7"
-        />
-        {filter.operator === "BETWEEN" ? (
-          <Input
-            value={filter.value2 ?? ""}
-            onChange={(event) => onUpdate({ value2: event.target.value })}
-            placeholder="To"
-            className="h-7"
+      <div className="grid grid-cols-2 gap-1.5 min-w-0">
+        <div className="min-w-0">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Object</div>
+          <Select
+            value={filter.nodeId}
+            onValueChange={(nodeId) => onUpdate({ nodeId, field: "" })}
+          >
+            <SelectTrigger className="h-6 text-[11px]">
+              <SelectValue placeholder="Select" />
+            </SelectTrigger>
+            <SelectContent>
+              {nodes.map((node) => (
+                <SelectItem key={node.id} value={node.id}>
+                  {nodes.length > 1
+                    ? `${node.alias}: ${node.entityName}`
+                    : node.entityName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Field</div>
+          <BuilderFieldSelect
+            fields={nodeFields}
+            value={filter.field}
+            onValueChange={(field) => onUpdate({ field })}
+            placeholder="Select"
+            className="h-6 text-[11px] min-w-0"
           />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Operator</div>
+          <Select
+            value={filter.operator}
+            onValueChange={(operator) =>
+              onUpdate({ operator: operator as BuilderFilter["operator"] })
+            }
+          >
+            <SelectTrigger className="h-6 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="=">=</SelectItem>
+              <SelectItem value="<>">&lt;&gt;</SelectItem>
+              <SelectItem value=">">&gt;</SelectItem>
+              <SelectItem value=">=">&gt;=</SelectItem>
+              <SelectItem value="<">&lt;</SelectItem>
+              <SelectItem value="<=">&lt;=</SelectItem>
+              <SelectItem value="LIKE">LIKE</SelectItem>
+              <SelectItem value="BETWEEN">BETWEEN</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] text-muted-foreground mb-0.5">
+            {filter.operator === "BETWEEN" ? "From" : "Value"}
+          </div>
+          <Input
+            value={filter.value}
+            onChange={(event) => onUpdate({ value: event.target.value })}
+            placeholder={filter.operator === "BETWEEN" ? "From" : "Value"}
+            className="h-6 text-[11px]"
+          />
+        </div>
+        {filter.operator === "BETWEEN" ? (
+          <div className="min-w-0">
+            <div className="text-[10px] text-muted-foreground mb-0.5">To</div>
+            <Input
+              value={filter.value2 ?? ""}
+              onChange={(event) => onUpdate({ value2: event.target.value })}
+              placeholder="To"
+              className="h-6 text-[11px]"
+            />
+          </div>
         ) : null}
       </div>
       {!isValid ? (
