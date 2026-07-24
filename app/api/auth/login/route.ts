@@ -301,6 +301,11 @@ export async function POST(req: NextRequest) {
         httpOnly: false,
         secure: isSecureRequest(req),
       });
+      response.cookies.set(
+        "OSWB_SAP_PROFILE",
+        process.env.SAP_PROFILE ?? process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "",
+        { path: "/", sameSite: "lax", httpOnly: false, secure: isSecureRequest(req) },
+      );
     }
 
     return response;

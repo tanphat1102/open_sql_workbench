@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-const servicePath = `/api/sap/opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "ZSQLWB_ODATA_SRV"}`;
+const servicePath = `/api/sap/opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE}`;
 
 type TestKind = "columns" | "chunks";
 
@@ -68,7 +68,10 @@ function buildDebugUrl({
   return `${servicePath}/${entitySet}?${searchParams.toString()}`;
 }
 
-function buildLengthVerdict(contentLengthHeader: string, receivedBytes: number) {
+function buildLengthVerdict(
+  contentLengthHeader: string,
+  receivedBytes: number,
+) {
   if (!contentLengthHeader) {
     return "No content-length header was exposed by the response.";
   }
@@ -121,7 +124,9 @@ function analyzeBody(kind: TestKind, body: string) {
     const chunks = results
       .slice()
       .sort((a, b) => Number(a.ChunkNo ?? 0) - Number(b.ChunkNo ?? 0));
-    const rowsJson = chunks.map((chunk) => String(chunk.PayloadPart ?? "")).join("");
+    const rowsJson = chunks
+      .map((chunk) => String(chunk.PayloadPart ?? ""))
+      .join("");
     const lastChunk = chunks[chunks.length - 1];
     const hasLastChunk =
       lastChunk?.IsLastChunk === true ||
@@ -138,7 +143,8 @@ function analyzeBody(kind: TestKind, body: string) {
       };
     } catch (error) {
       return {
-        parseVerdict: "Outer OData JSON parsed, but joined PayloadPart did not parse.",
+        parseVerdict:
+          "Outer OData JSON parsed, but joined PayloadPart did not parse.",
         detail: `Chunks: ${chunks.length}. Last chunk flag: ${hasLastChunk ? "yes" : "no"}. Joined RowsJson bytes: ${new TextEncoder().encode(rowsJson).length}. Error: ${
           error instanceof Error ? error.message : "Unknown parse error"
         }`,
@@ -224,7 +230,9 @@ function ResultCard({ result }: { result: TestResult }) {
           </div>
           <div className="rounded-md border border-border bg-accent p-3">
             <div className="text-xs text-muted-foreground">Content-Length</div>
-            <div className="font-medium">{result.contentLengthHeader || "-"}</div>
+            <div className="font-medium">
+              {result.contentLengthHeader || "-"}
+            </div>
           </div>
           <div className="rounded-md border border-border bg-accent p-3">
             <div className="text-xs text-muted-foreground">Received</div>
@@ -234,18 +242,24 @@ function ResultCard({ result }: { result: TestResult }) {
           </div>
           <div className="rounded-md border border-border bg-accent p-3">
             <div className="text-xs text-muted-foreground">Content-Type</div>
-            <div className="truncate font-medium">{result.contentType || "-"}</div>
+            <div className="truncate font-medium">
+              {result.contentType || "-"}
+            </div>
           </div>
         </div>
 
         <div className="rounded-md border border-border bg-white p-3 text-sm">
           <div className="font-medium text-foreground">Length verdict</div>
-          <div className="mt-1 text-muted-foreground">{result.lengthVerdict}</div>
+          <div className="mt-1 text-muted-foreground">
+            {result.lengthVerdict}
+          </div>
         </div>
 
         <div className="rounded-md border border-border bg-white p-3 text-sm">
           <div className="font-medium text-foreground">Parse verdict</div>
-          <div className="mt-1 text-muted-foreground">{result.parseVerdict}</div>
+          <div className="mt-1 text-muted-foreground">
+            {result.parseVerdict}
+          </div>
           <div className="mt-1 text-muted-foreground">{result.detail}</div>
         </div>
 
@@ -310,7 +324,9 @@ export default function ODataDebugPage() {
 
       setResults((current) => [result, ...current]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to run debug test.");
+      setError(
+        err instanceof Error ? err.message : "Unable to run debug test.",
+      );
     } finally {
       setIsRunning(false);
     }
@@ -403,9 +419,10 @@ export default function ODataDebugPage() {
             ) : null}
 
             <div className="rounded-md border border-border bg-accent p-3 text-sm text-muted-foreground">
-              Use this page after running <span className="font-mono">RunQuery</span>.
-              It calls the SAP endpoints through <span className="font-mono">/api/sap</span>,
-              so an SAP login session is still required.
+              Use this page after running{" "}
+              <span className="font-mono">RunQuery</span>. It calls the SAP
+              endpoints through <span className="font-mono">/api/sap</span>, so
+              an SAP login session is still required.
             </div>
           </CardContent>
         </Card>

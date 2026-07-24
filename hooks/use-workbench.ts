@@ -137,7 +137,7 @@ export function useWorkbench() {
         const pkg = process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "unknown";
         throw new Error(
           isLive
-            ? `No tables returned from ${pkg} for profile "${process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV"}". Check whitelist configuration.`
+            ? `No tables returned from ${pkg} for profile "${process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "(not set)"}". Check whitelist configuration.`
             : `Cannot connect to SAP package ${pkg}. Check SAP_PACKAGE and connection.`,
         );
       }

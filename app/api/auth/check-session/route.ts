@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
           success: true,
           client: sapClient,
           user: sapUser,
+          profile: process.env.SAP_PROFILE ?? process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID,
         },
         { status: 200 },
       );
