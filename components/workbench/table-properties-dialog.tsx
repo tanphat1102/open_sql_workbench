@@ -38,6 +38,7 @@ type TablePropertiesDialogProps = {
   entityType?: string;
   entityDescription?: string;
   onPreviewFields?: (fieldNames: string[]) => void;
+  selectionMode?: boolean;
 };
 
 function normalizeNumber(value: string | number | undefined, fallback = 0) {
@@ -143,6 +144,7 @@ export function TablePropertiesDialog({
   entityType = "TABLE",
   entityDescription,
   onPreviewFields,
+  selectionMode,
 }: TablePropertiesDialogProps) {
   const [fields, setFields] = useState<SapSqlwbField[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -267,7 +269,9 @@ export function TablePropertiesDialog({
     const names = [...selectedFields].filter((n) => allFieldNames.has(n));
     if (names.length > 0) {
       onPreviewFields?.(names);
-      onOpenChange(false);
+      if (!selectionMode) {
+        onOpenChange(false);
+      }
     }
   }
 
@@ -431,7 +435,7 @@ export function TablePropertiesDialog({
                   onClick={handlePreviewSelected}
                 >
                   <Eye className="size-3" />
-                  Preview ({selectedCount})
+                  {selectionMode ? "Apply" : "Preview"} ({selectedCount})
                 </Button>
               </div>
             </div>

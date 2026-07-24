@@ -680,7 +680,7 @@ pageInfo={resultPageInfo}
         entityDescription={selectedEntity?.description}
         onPreviewFields={(fieldNames) => {
           const cols = fieldNames.join(", ");
-          setQueryText(`SELECT ${cols}\nFROM ${propertiesEntityName};\n`);
+          setQueryText(`SELECT ${cols}\nFROM ${propertiesEntityName}`);
         }}
       />
       <SavedQueriesDialog
