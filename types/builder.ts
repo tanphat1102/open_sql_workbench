@@ -12,6 +12,7 @@ export type BuilderNode = {
   alias: string;
   fields: string;
   orderBy: BuilderOrderClause[];
+  groupBy: string[];
   x: number;
   y: number;
 };
@@ -20,7 +21,7 @@ export type BuilderJoin = {
   id: string;
   leftNodeId: string;
   rightNodeId: string;
-  joinType: "INNER JOIN" | "LEFT OUTER JOIN";
+  joinType: "INNER JOIN" | "LEFT OUTER JOIN" | "RIGHT OUTER JOIN";
   leftField: string;
   rightField: string;
 };
@@ -33,6 +34,7 @@ export type BuilderFilter = {
   value: string;
   value2?: string;
   conjunction: "AND" | "OR";
+  clause: "WHERE" | "HAVING";
 };
 
 export type VisualQueryBuilderProps = {

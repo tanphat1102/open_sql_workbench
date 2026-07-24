@@ -1,7 +1,13 @@
 "use client";
 
-import type { PointerEvent as ReactPointerEvent } from "react";
-import { GripVertical, LoaderCircle, Table2, Trash2 } from "lucide-react";
+import { type PointerEvent as ReactPointerEvent } from "react";
+import {
+  GripVertical,
+  LoaderCircle,
+  Search,
+  Table2,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +67,7 @@ interface BuilderNodeCardProps {
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragMove: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragEnd: (event: ReactPointerEvent<HTMLElement>) => void;
+  onOpenFieldPicker: (callback: (fieldNames: string[]) => void) => void;
 }
 
 const nodeWidth = 220;
@@ -78,6 +85,7 @@ export function BuilderNodeCard({
   onDragStart,
   onDragMove,
   onDragEnd,
+  onOpenFieldPicker,
 }: BuilderNodeCardProps) {
   const selectedFields = new Set(
     parseFields(node.fields).map((field) => normalizeFieldName(field)),
@@ -90,6 +98,19 @@ export function BuilderNodeCard({
         item.id !== node.id &&
         item.alias.trim().toLowerCase() === normalizedAlias,
     );
+
+  const groupByItems = node.groupBy;
+
+  const updateGroupBy = (newItems: string[]) => {
+    onUpdate({ groupBy: newItems });
+  };
+
+  const addGroupByRow = () => {
+    const hasEmptySlot = node.groupBy.some((f) => f.trim() === "");
+    if (!hasEmptySlot) {
+      onUpdate({ groupBy: [...node.groupBy, ""] });
+    }
+  };
 
   return (
     <div
@@ -142,149 +163,264 @@ export function BuilderNodeCard({
             )}
           />
         </div>
+
+        {/* Fields */}
         <div className="grid gap-1">
-          <span className="text-xs text-muted-foreground">Fields</span>
-          <Input
-            value={node.fields}
-            onChange={(event) => onUpdate({ fields: event.target.value })}
-            placeholder={allNodes.length === 1 ? "*" : "CARRID, CONNID"}
-            className="h-7"
-          />
-          {nodeFields.length > 0 ? (
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Fields</span>
+            <span className="flex items-center gap-1">
+              {nodeFields.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdate({
+                        fields: nodeFields
+                          .map((f) => getFieldName(f))
+                          .join(", "),
+                      })
+                    }
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdate({ fields: "" })}
+                    className="text-[10px] text-muted-foreground hover:underline"
+                  >
+                    Clear
+                  </button>
+                </>
+              ) : null}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Input
+              value={node.fields}
+              onChange={(event) => onUpdate({ fields: event.target.value })}
+              placeholder={allNodes.length === 1 ? "*" : "CARRID, CONNID"}
+              className="h-7 flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                onOpenFieldPicker((fieldNames) => {
+                  const current = parseFields(node.fields).map(
+                    normalizeFieldName,
+                  );
+                  const newFields = fieldNames
+                    .map(normalizeFieldName)
+                    .filter((f) => !current.includes(f));
+                  if (newFields.length > 0) {
+                    const updated = [...parseFields(node.fields), ...newFields];
+                    onUpdate({ fields: updated.join(", ") });
+                  }
+                })
+              }
+              className="shrink-0 h-7 text-[10px] px-2"
+            >
+              <Search className="size-3" />
+              Browse
+            </Button>
+          </div>
+          {selectedFields.size > 0 ? (
+            <div className="flex max-h-20 flex-wrap content-start gap-1 overflow-auto">
+              {parseFields(node.fields).map((fieldName) => (
+                <button
+                  key={fieldName}
+                  type="button"
+                  onClick={() => onToggleField(fieldName)}
+                  className="inline-flex items-center gap-0.5 h-5 rounded border border-primary/40 bg-[#e5f2ff] px-1.5 text-[10px] leading-none text-primary hover:bg-red-50 hover:border-red-300 hover:text-red-700"
+                  title="Click to remove"
+                >
+                  {fieldName}
+                  <span className="text-[9px]">×</span>
+                </button>
+              ))}
+            </div>
+          ) : allNodes.length > 1 ? (
+            <div className="text-[10px] text-muted-foreground italic">
+              No fields selected. Use Browse or type field names.
+            </div>
+          ) : null}
+        </div>
+
+        {/* Order By */}
+        {nodeFields.length > 0 ? (
+          <div className="border-t border-border pt-2">
             <div className="mb-1 flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground">
-                {nodeFields.length} fields
+                Order By
               </span>
-              <span className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdate({
-                      fields: nodeFields
-                        .map((f) => getFieldName(f))
-                        .join(", "),
-                    })
-                  }
-                  className="text-[10px] text-primary hover:underline"
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onUpdate({ fields: "" })}
-                  className="text-[10px] text-muted-foreground hover:underline"
-                >
-                  Clear
-                </button>
-              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdate({
+                    orderBy: [...node.orderBy, { field: "", direction: "ASC" }],
+                  })
+                }
+                className="text-[10px] text-primary hover:underline"
+              >
+                + Add
+              </button>
             </div>
-          ) : null}
-          {nodeFields.length > 0 ? (
-            <div className="flex max-h-28 flex-wrap content-start gap-1 overflow-auto">
-              {nodeFields.map((field) => {
-                const fieldName = getFieldName(field);
-                const selected = selectedFields.has(fieldName);
-
-                return (
-                  <button
-                    key={fieldName}
-                    type="button"
-                    onClick={() => onToggleField(fieldName)}
-                    className={cn(
-                      "h-5 rounded border px-1.5 text-[10px] leading-none",
-                      selected
-                        ? "border-primary bg-[#e5f2ff] text-primary"
-                        : "border-border bg-white text-muted-foreground hover:border-primary/60 hover:text-primary",
-                    )}
-                  >
-                    {fieldName}
-                    {isKeyField(field) ? (
-                      <span className="ml-1 text-[9px] uppercase">Key</span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          {nodeFields.length > 0 ? (
-            <div className="border-t border-border pt-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground">
-                  Order By
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdate({
-                      orderBy: [
-                        ...node.orderBy,
-                        { field: "", direction: "ASC" },
-                      ],
-                    })
-                  }
-                  className="text-[10px] text-primary hover:underline"
+            {node.orderBy.map((order, oi) => (
+              <div key={oi} className="mb-1 flex items-center gap-1">
+                <Select
+                  value={order.field}
+                  onValueChange={(v) => {
+                    const next = [...node.orderBy];
+                    next[oi] = { ...next[oi], field: v };
+                    onUpdate({ orderBy: next });
+                  }}
                 >
-                  + Add
-                </button>
-              </div>
-              {node.orderBy.map((order, oi) => (
-                <div key={oi} className="mb-1 flex items-center gap-1">
-                  <Select
-                    value={order.field}
-                    onValueChange={(v) => {
-                      const next = [...node.orderBy];
-                      next[oi] = { ...next[oi], field: v };
-                      onUpdate({ orderBy: next });
-                    }}
-                  >
-                    <SelectTrigger className="h-6 flex-1 text-[10px]">
-                      <SelectValue placeholder="Field" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {nodeFields.map((f) => (
-                        <SelectItem key={getFieldName(f)} value={getFieldName(f)}>
-                          {getFieldName(f)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={order.direction}
-                    onValueChange={(v) => {
+                  <SelectTrigger className="h-6 flex-1 text-[10px]">
+                    <SelectValue placeholder="Field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {nodeFields.map((f) => (
+                      <SelectItem key={getFieldName(f)} value={getFieldName(f)}>
+                        {getFieldName(f)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={order.direction}
+                  onValueChange={(v) => {
+                    const next = [...node.orderBy];
+                    next[oi] = {
+                      ...next[oi],
+                      direction: v as "ASC" | "DESC",
+                    };
+                    onUpdate({ orderBy: next });
+                  }}
+                >
+                  <SelectTrigger className="h-6 w-16 text-[10px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ASC">ASC</SelectItem>
+                    <SelectItem value="DESC">DESC</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() =>
+                    onOpenFieldPicker((fieldNames) => {
                       const next = [...node.orderBy];
                       next[oi] = {
                         ...next[oi],
-                        direction: v as "ASC" | "DESC",
+                        field: fieldNames[fieldNames.length - 1] ?? "",
                       };
                       onUpdate({ orderBy: next });
-                    }}
-                  >
-                    <SelectTrigger className="h-6 w-16 text-[10px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ASC">ASC</SelectItem>
-                      <SelectItem value="DESC">DESC</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = node.orderBy.filter((_, i) => i !== oi);
-                      onUpdate({ orderBy: next });
-                    }}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="size-3" />
-                  </button>
-                </div>
-              ))}
+                    })
+                  }
+                  aria-label="Browse fields"
+                  title="Browse fields"
+                >
+                  <Search className="size-3" />
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = node.orderBy.filter((_, i) => i !== oi);
+                    onUpdate({ orderBy: next });
+                  }}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Group By */}
+        {nodeFields.length > 0 ? (
+          <div className="border-t border-border pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">
+                Group By
+              </span>
+              <button
+                type="button"
+                onClick={addGroupByRow}
+                className="text-[10px] text-primary hover:underline"
+              >
+                + Add
+              </button>
             </div>
-          ) : null}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">
-          {getEntityLabel(node.entityName, entities)}
-        </div>
+            {groupByItems.map((field, index) => (
+              <div key={index} className="mb-1 flex items-center gap-1">
+                <Select
+                  value={field}
+                  onValueChange={(v) => {
+                    const next = [...groupByItems];
+                    next[index] = v;
+                    updateGroupBy(next);
+                  }}
+                >
+                  <SelectTrigger className="h-6 flex-1 text-[10px]">
+                    <SelectValue placeholder="Select field..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {nodeFields
+                      .filter(
+                        (f) =>
+                          !groupByItems.some(
+                            (item, i) =>
+                              i !== index && item === getFieldName(f),
+                          ),
+                      )
+                      .map((f) => (
+                        <SelectItem
+                          key={getFieldName(f)}
+                          value={getFieldName(f)}
+                        >
+                          {getFieldName(f)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() =>
+                    onOpenFieldPicker((fieldNames) => {
+                      const next = [...groupByItems];
+                      next[index] = fieldNames[fieldNames.length - 1] ?? "";
+                      updateGroupBy(next);
+                    })
+                  }
+                  aria-label="Browse fields"
+                  title="Browse fields"
+                >
+                  <Search className="size-3" />
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = groupByItems.filter((_, i) => i !== index);
+                    updateGroupBy(next);
+                  }}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="truncate text-xs text-muted-foreground px-2 pb-1.5">
+        {getEntityLabel(node.entityName, entities)}
       </div>
     </div>
   );

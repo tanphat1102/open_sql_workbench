@@ -8,10 +8,16 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { CornerDownRight, Plus, RotateCcw } from "lucide-react";
+import { CornerDownRight, Plus, RotateCcw, Search, Table2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -25,6 +31,7 @@ import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { sqlAssistService } from "@/services/sqlAssistService";
 import type { SapSqlwbField } from "@/types/sap";
+import type { WorkbenchEntity } from "@/types/workbench";
 import type {
   BuilderNode,
   BuilderJoin,
@@ -35,6 +42,7 @@ import type {
 import { BuilderNodeCard } from "@/components/workbench/builder-node-card";
 import { BuilderJoinEditor } from "@/components/workbench/builder-join-editor";
 import { BuilderFilterEditor } from "@/components/workbench/builder-filter-editor";
+import { TablePropertiesDialog } from "@/components/workbench/table-properties-dialog";
 
 const nodeWidth = 220;
 const nodeAnchorOffsetY = 74;
@@ -272,8 +280,13 @@ function formatWhereValue(value: string) {
   return `'${trimmedValue.replace(/'/g, "''")}'`;
 }
 
-function buildWhereClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
-  const conditions = filters
+function buildConditionClause(
+  nodes: BuilderNode[],
+  filters: BuilderFilter[],
+  clause: "WHERE" | "HAVING",
+) {
+  const clauseFilters = filters.filter((f) => (f.clause ?? "WHERE") === clause);
+  const conditions = clauseFilters
     .filter((filter) => {
       if (!filter.nodeId || !filter.field) return false;
       if (filter.operator === "BETWEEN") {
@@ -295,7 +308,32 @@ function buildWhereClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
       return index === 0 ? condition : `${filter.conjunction} ${condition}`;
     });
 
-  return conditions.length > 0 ? `WHERE ${conditions.join("\n")}` : "";
+  return conditions.length > 0 ? `${clause} ${conditions.join("\n")}` : "";
+}
+
+function buildWhereClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
+  return buildConditionClause(nodes, filters, "WHERE");
+}
+
+function buildGroupByClause(nodes: BuilderNode[]) {
+  if (nodes.length === 1) {
+    const fields = nodes[0].groupBy.filter((f) => f.trim());
+    return fields.length > 0 ? `GROUP BY ${fields.join(", ")}` : "";
+  }
+
+  const fields = nodes.flatMap((node) =>
+    node.groupBy
+      .filter((f) => f.trim())
+      .map((field) =>
+        field.includes("~") ? field : `${node.alias}~${field}`,
+      ),
+  );
+
+  return fields.length > 0 ? `GROUP BY ${fields.join(", ")}` : "";
+}
+
+function buildHavingClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
+  return buildConditionClause(nodes, filters, "HAVING");
 }
 
 function buildSql(
@@ -312,6 +350,8 @@ function buildSql(
       `SELECT ${buildSelectList(nodes)}`,
       `FROM ${nodes[0].entityName}`,
       buildWhereClause(nodes, filters),
+      buildGroupByClause(nodes),
+      buildHavingClause(nodes, filters),
       buildOrderByClause(nodes),
     ]
       .filter(Boolean)
@@ -347,6 +387,18 @@ function buildSql(
     lines.push(whereClause);
   }
 
+  const groupByClause = buildGroupByClause(nodes);
+
+  if (groupByClause) {
+    lines.push(groupByClause);
+  }
+
+  const havingClause = buildHavingClause(nodes, filters);
+
+  if (havingClause) {
+    lines.push(havingClause);
+  }
+
   const orderByClause = buildOrderByClause(nodes);
 
   if (orderByClause) {
@@ -378,7 +430,9 @@ function centerPosition(index: number) {
 }
 
 function getJoinLabel(join: BuilderJoin) {
-  return join.joinType === "INNER JOIN" ? "INNER" : "LEFT";
+  if (join.joinType === "INNER JOIN") return "INNER";
+  if (join.joinType === "RIGHT OUTER JOIN") return "RIGHT";
+  return "LEFT";
 }
 
 function getConnectorGeometry(leftNode: BuilderNode, rightNode: BuilderNode) {
@@ -470,6 +524,8 @@ export function VisualQueryBuilder({
   const [nodes, setNodes] = useState<BuilderNode[]>([]);
   const [joins, setJoins] = useState<BuilderJoin[]>([]);
   const [filters, setFilters] = useState<BuilderFilter[]>([]);
+  const [fieldPickerNodeId, setFieldPickerNodeId] = useState<string | null>(null);
+  const fieldPickerCallbackRef = useRef<((fieldNames: string[]) => void) | null>(null);
   // Fetch fields for all active nodes via TanStack Query (cached per entity)
   const entityFieldQueries = useQueries({
     queries: nodes.map((node) => ({
@@ -543,6 +599,7 @@ export function VisualQueryBuilder({
       alias: getNextAlias(nodes),
       fields: "",
       orderBy: [],
+      groupBy: [],
       x: position.x,
       y: position.y,
     };
@@ -710,7 +767,7 @@ export function VisualQueryBuilder({
     );
   }
 
-  function addFilter() {
+  function addFilter(clause: "WHERE" | "HAVING" = "WHERE") {
     if (nodes.length === 0) {
       return;
     }
@@ -725,6 +782,7 @@ export function VisualQueryBuilder({
         value: "",
         value2: "",
         conjunction: "AND",
+        clause,
       },
     ]);
   }
@@ -867,7 +925,7 @@ export function VisualQueryBuilder({
 
     if (invalidFilter) {
       toast({
-        title: "Valid WHERE condition required",
+        title: "Valid filter condition required",
         description:
           "Choose a metadata field and enter a value for every filter.",
         variant: "destructive",
@@ -875,10 +933,22 @@ export function VisualQueryBuilder({
       return;
     }
 
+    const hasHaving = filters.some((f) => f.clause === "HAVING");
+    const hasGroupBy = nodes.some((n) => n.groupBy.some((f) => f.trim()));
+
+    if (hasHaving && !hasGroupBy) {
+      toast({
+        title: "GROUP BY required",
+        description: "HAVING filters require at least one GROUP BY field.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     onApplySql(generatedSql);
     toast({
-      title: "SQL generated",
-      description: "The visual model was applied to the SQL editor.",
+      title: "SQL applied",
+      description: "Builder query was applied to the SQL editor.",
       variant: "success",
     });
   }
@@ -895,18 +965,7 @@ export function VisualQueryBuilder({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Select onValueChange={(value) => addNode(value)}>
-            <SelectTrigger className="h-8 min-w-44">
-              <SelectValue placeholder="Add object" />
-            </SelectTrigger>
-            <SelectContent>
-              {entities.map((entity) => (
-                <SelectItem key={entity.name} value={entity.name}>
-                  {entity.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <AddEntityDialog entities={entities} excludedNames={nodes.map((n) => n.entityName)} onSelect={(name) => addNode(name)} />
           <Button
             type="button"
             variant="outline"
@@ -955,6 +1014,20 @@ export function VisualQueryBuilder({
               </defs>
               {joinConnectors.map(({ join, geometry }) => {
                 const isLeftJoin = join.joinType === "LEFT OUTER JOIN";
+                const isRightJoin = join.joinType === "RIGHT OUTER JOIN";
+                const isOuter = isLeftJoin || isRightJoin;
+
+                const joinColor = isRightJoin
+                  ? "#0d9488"
+                  : isLeftJoin
+                    ? "#b36b00"
+                    : "#0a6ed1";
+
+                const labelClass = isRightJoin
+                  ? "border-teal-300 text-teal-800"
+                  : isLeftJoin
+                    ? "border-amber-300 text-amber-800"
+                    : "border-[#9ac7f0] text-primary";
 
                 return (
                   <g key={join.id}>
@@ -962,8 +1035,8 @@ export function VisualQueryBuilder({
                       d={geometry.path}
                       fill="none"
                       markerEnd="url(#builder-join-arrow)"
-                      stroke={isLeftJoin ? "#b36b00" : "#0a6ed1"}
-                      strokeDasharray={isLeftJoin ? "6 4" : undefined}
+                      stroke={joinColor}
+                      strokeDasharray={isOuter ? "6 4" : undefined}
                       strokeLinecap="round"
                       strokeWidth="2.5"
                     />
@@ -972,7 +1045,7 @@ export function VisualQueryBuilder({
                       cy={geometry.startY}
                       fill="#fff"
                       r="4"
-                      stroke={isLeftJoin ? "#b36b00" : "#0a6ed1"}
+                      stroke={joinColor}
                       strokeWidth="2"
                     />
                     <circle
@@ -980,7 +1053,7 @@ export function VisualQueryBuilder({
                       cy={geometry.endY}
                       fill="#fff"
                       r="4"
-                      stroke={isLeftJoin ? "#b36b00" : "#0a6ed1"}
+                      stroke={joinColor}
                       strokeWidth="2"
                     />
                     <foreignObject
@@ -993,9 +1066,7 @@ export function VisualQueryBuilder({
                         <div
                           className={cn(
                             "max-w-[136px] truncate rounded border bg-white px-2 py-0.5 text-[10px] font-medium shadow-sm",
-                            isLeftJoin
-                              ? "border-amber-300 text-amber-800"
-                              : "border-[#9ac7f0] text-primary",
+                            labelClass,
                           )}
                         >
                           {getJoinLabel(join)} · {join.leftField} ={" "}
@@ -1035,6 +1106,10 @@ export function VisualQueryBuilder({
                 onDragStart={(event) => handleNodeDragStart(event, node)}
                 onDragMove={handleNodeDragMove}
                 onDragEnd={handleNodeDragEnd}
+                onOpenFieldPicker={(callback) => {
+                  fieldPickerCallbackRef.current = callback;
+                  setFieldPickerNodeId(node.id);
+                }}
               />
             );
           })}
@@ -1101,49 +1176,99 @@ export function VisualQueryBuilder({
 
               <Separator />
 
+              {/* WHERE Filters */}
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold">Filters</div>
+                <div className="text-sm font-semibold">WHERE</div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={addFilter}
+                  onClick={() => addFilter("WHERE")}
                   disabled={nodes.length === 0}
                 >
                   <Plus />
-                  Where
+                  Add
                 </Button>
               </div>
 
-              {filters.length === 0 ? (
+              {filters.filter((f) => (f.clause ?? "WHERE") === "WHERE").length === 0 ? (
                 <div className="rounded-md border border-dashed border-border bg-white p-3 text-xs text-muted-foreground">
-                  No filters
+                  No WHERE filters
                 </div>
               ) : null}
 
-              {filters.map((filter, index) => {
-                const node = nodes.find((n) => n.id === filter.nodeId);
-                const nodeFields = sortFields(
-                  getNodeFields(node, fieldsByEntity),
-                ).filter((f) => !blockedJoinFields.has(getFieldName(f)));
+              {filters
+                .filter((f) => (f.clause ?? "WHERE") === "WHERE")
+                .map((filter, index) => {
+                  const node = nodes.find((n) => n.id === filter.nodeId);
+                  const nodeFields = sortFields(
+                    getNodeFields(node, fieldsByEntity),
+                  ).filter((f) => !blockedJoinFields.has(getFieldName(f)));
 
-                return (
-                  <BuilderFilterEditor
-                    key={filter.id}
-                    filter={filter}
-                    index={index}
-                    nodes={nodes}
-                    nodeFields={nodeFields}
-                    isValid={isFilterValid(filter, nodes, fieldsByEntity)}
-                    onUpdate={(patch) => updateFilter(filter.id, patch)}
-                    onRemove={() =>
-                      setFilters((prev) =>
-                        prev.filter((item) => item.id !== filter.id),
-                      )
-                    }
-                  />
-                );
-              })}
+                  return (
+                    <BuilderFilterEditor
+                      key={filter.id}
+                      filter={filter}
+                      index={index}
+                      nodes={nodes}
+                      nodeFields={nodeFields}
+                      isValid={isFilterValid(filter, nodes, fieldsByEntity)}
+                      onUpdate={(patch) => updateFilter(filter.id, patch)}
+                      onRemove={() =>
+                        setFilters((prev) =>
+                          prev.filter((item) => item.id !== filter.id),
+                        )
+                      }
+                    />
+                  );
+                })}
+
+              {/* HAVING Filters */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold">HAVING</div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addFilter("HAVING")}
+                  disabled={nodes.length === 0}
+                >
+                  <Plus />
+                  Add
+                </Button>
+              </div>
+
+              {filters.filter((f) => f.clause === "HAVING").length === 0 ? (
+                <div className="rounded-md border border-dashed border-border bg-white p-3 text-xs text-muted-foreground">
+                  No HAVING filters. Requires GROUP BY.
+                </div>
+              ) : null}
+
+              {filters
+                .filter((f) => f.clause === "HAVING")
+                .map((filter, index) => {
+                  const node = nodes.find((n) => n.id === filter.nodeId);
+                  const nodeFields = sortFields(
+                    getNodeFields(node, fieldsByEntity),
+                  ).filter((f) => !blockedJoinFields.has(getFieldName(f)));
+
+                  return (
+                    <BuilderFilterEditor
+                      key={filter.id}
+                      filter={filter}
+                      index={index}
+                      nodes={nodes}
+                      nodeFields={nodeFields}
+                      isValid={isFilterValid(filter, nodes, fieldsByEntity)}
+                      onUpdate={(patch) => updateFilter(filter.id, patch)}
+                      onRemove={() =>
+                        setFilters((prev) =>
+                          prev.filter((item) => item.id !== filter.id),
+                        )
+                      }
+                    />
+                  );
+                })}
             </div>
           </ScrollArea>
           <Separator />
@@ -1157,6 +1282,137 @@ export function VisualQueryBuilder({
           </div>
         </aside>
       </div>
+      {fieldPickerNodeId ? (() => {
+        const pickerNode = nodes.find((n) => n.id === fieldPickerNodeId);
+        if (!pickerNode) return null;
+        const entityInfo = entities.find((e) => e.name === pickerNode.entityName);
+        return (
+          <TablePropertiesDialog
+            open
+            onOpenChange={() => {
+              setFieldPickerNodeId(null);
+              fieldPickerCallbackRef.current = null;
+            }}
+            entityName={pickerNode.entityName}
+            entityDescription={entityInfo?.description}
+            selectionMode
+            onPreviewFields={(fieldNames) => {
+              const cb = fieldPickerCallbackRef.current;
+              if (cb) {
+                cb(fieldNames);
+              } else {
+                updateNode(pickerNode.id, { fields: fieldNames.join(", ") });
+              }
+            }}
+          />
+        );
+      })() : null}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Add Entity Dialog                                                   */
+/* ------------------------------------------------------------------ */
+
+type AddEntityDialogProps = {
+  entities: WorkbenchEntity[];
+  excludedNames: string[];
+  onSelect: (entityName: string) => void;
+};
+
+function AddEntityDialog({ entities, excludedNames, onSelect }: AddEntityDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const available = entities.filter(
+    (e) => !excludedNames.includes(e.name),
+  );
+
+  const filtered = search
+    ? available.filter(
+        (e) =>
+          e.name.toLowerCase().includes(search.toLowerCase()) ||
+          e.description?.toLowerCase().includes(search.toLowerCase()),
+      )
+    : available;
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setOpen(true)}
+        className="h-8"
+      >
+        <Table2 className="size-3.5" />
+        Add object
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm gap-0 p-0" showCloseButton={false}>
+          <DialogHeader className="border-b border-border bg-[#f7fbff] px-4 py-3">
+            <DialogTitle className="text-sm">Add table or view</DialogTitle>
+          </DialogHeader>
+          <div className="relative border-b border-border px-3 py-2">
+            <Search className="absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search entities..."
+              className="h-7 w-full rounded border border-border bg-white pl-7 pr-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-[320px] overflow-auto">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                {search ? "No matching tables." : "All tables already added."}
+              </div>
+            ) : (
+              filtered.map((entity) => (
+                <button
+                  key={entity.name}
+                  type="button"
+                  onClick={() => {
+                    onSelect(entity.name);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className="flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition last:border-b-0 hover:bg-accent"
+                >
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded bg-primary/10">
+                    <Table2 className="size-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground">
+                      {entity.name}
+                    </div>
+                    {entity.description ? (
+                      <div className="truncate text-xs text-muted-foreground">
+                        {entity.description}
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="border-t border-border bg-[#f7fbff] px-4 py-2 text-right">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setOpen(false);
+                setSearch("");
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
