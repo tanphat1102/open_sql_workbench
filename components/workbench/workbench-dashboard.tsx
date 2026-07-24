@@ -81,9 +81,13 @@ export function WorkbenchDashboard() {
 
   const queryClient = useQueryClient();
 
-  const [profileResolved, setProfileResolved] = useState(false);
-  const [showProfileDialog, setShowProfileDialog] = useState(false);
-  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [selectedProfileId, setSelectedProfileId] = useState(() => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(
+      /(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/,
+    );
+    return match?.[1] ?? "";
+  });
 
   const {
     data: userProfiles = [],
@@ -102,34 +106,23 @@ export function WorkbenchDashboard() {
     return match?.[1] ?? "";
   }
 
-  // Resolve profile: auto-select single, show dialog for multiple, fall through on error
+  // Derive profile resolution state from query data + selected profile
+  const singleProfileId = userProfiles.length === 1 ? (userProfiles[0].ProfileId ?? "") : "";
+  const effectiveProfileId = selectedProfileId || singleProfileId;
+  const hasValidProfile =
+    userProfiles.length === 0 ||
+    (effectiveProfileId !== "" && userProfiles.some((p) => p.ProfileId === effectiveProfileId));
+  const showProfileDialog = !profilesLoading && userProfiles.length > 1 && !hasValidProfile;
+  const profileResolved = !profilesLoading && (userProfiles.length <= 1 || hasValidProfile);
+
+  // Sync cookie for single-profile auto-select (external sync, no setState needed)
   useEffect(() => {
-    if (profilesLoading) return;
-
-    if (userProfiles.length === 1) {
-      const pid = userProfiles[0].ProfileId ?? "";
-      if (pid) {
-        document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(pid)}; path=/; SameSite=Lax`;
-        setSelectedProfileId(pid);
-      }
-      setProfileResolved(true);
-      return;
+    if (profilesLoading || userProfiles.length !== 1) return;
+    const pid = userProfiles[0].ProfileId ?? "";
+    if (pid && getCurrentProfileId() !== pid) {
+      document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(pid)}; path=/; SameSite=Lax`;
     }
-
-    if (userProfiles.length > 1) {
-      const current = getCurrentProfileId();
-      if (current && userProfiles.some((p) => p.ProfileId === current)) {
-        setSelectedProfileId(current);
-        setProfileResolved(true);
-      } else {
-        setShowProfileDialog(true);
-      }
-      return;
-    }
-
-    // Zero profiles returned — let workbench handle the error
-    setProfileResolved(true);
-  }, [userProfiles, profilesLoading]);
+  }, [profilesLoading, userProfiles]);
 
   const {
     selectedEntity,
@@ -151,13 +144,12 @@ export function WorkbenchDashboard() {
     previewTable,
     loadResultPage,
     needLogin,
-  } = useWorkbench({ enabled: profileResolved && !showProfileDialog });
+  } = useWorkbench({ enabled: profileResolved });
 
   function handleSelectProfile(profileId: string) {
+    // eslint-disable-next-line -- cookie write is intended side effect from user action
     document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(profileId)}; path=/; SameSite=Lax`;
     setSelectedProfileId(profileId);
-    setShowProfileDialog(false);
-    setProfileResolved(true);
     setProfileOpen(false);
     queryClient.invalidateQueries({ queryKey: ["snapshot"] });
     toast({
@@ -213,13 +205,6 @@ export function WorkbenchDashboard() {
     });
     router.push("/login");
   }, [needLogin, router]);
-
-  useEffect(() => {
-    const current = getCurrentProfileId();
-    if (current) {
-      setSelectedProfileId(current);
-    }
-  }, [sessionInfo]);
 
   function handleProfileToggle() {
     setProfileOpen((current) => {
@@ -380,16 +365,20 @@ export function WorkbenchDashboard() {
     );
   }
 
-  return (
-    <>
+  // Show profile selection dialog, hide workbench until resolved
+  if (showProfileDialog) {
+    return (
       <ProfileSelectionDialog
-        open={showProfileDialog}
+        open
         profiles={userProfiles}
         currentUser={sessionInfo?.user}
         onSelect={handleSelectProfile}
       />
+    );
+  }
 
-      <main
+  return (
+    <main
         className={`fiori-page h-dvh overflow-hidden px-3 py-3 text-sm sm:px-4 ${
           isResizing ? "cursor-grabbing select-none" : ""
         }`}
@@ -479,7 +468,7 @@ export function WorkbenchDashboard() {
                       </div>
                       {userProfiles.map((p) => {
                         const pid = p.ProfileId ?? "";
-                        const isActive = pid === selectedProfileId;
+                        const isActive = pid === effectiveProfileId;
 
                         return (
                           <button
@@ -703,6 +692,5 @@ pageInfo={resultPageInfo}
         onRunQuery={executeAndShowResults}
       />
     </main>
-    </>
   );
 }
