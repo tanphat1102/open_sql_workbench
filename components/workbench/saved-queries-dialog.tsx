@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Bookmark, LoaderCircle, Pencil, Play, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Bookmark, LoaderCircle, Pencil, Play, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,51 @@ export function SavedQueriesDialog({
   // Edit mode: when not null, updating an existing query
   const [editingQueryId, setEditingQueryId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  function matchSearch(q: SapSqlwbSavedQuery, query: string) {
+    if (!query) return true;
+    const lower = query.toLowerCase();
+    return (
+      q.QueryName?.toLowerCase().includes(lower) ||
+      q.Description?.toLowerCase().includes(lower) ||
+      q.Tags?.toLowerCase().includes(lower) ||
+      q.QueryText?.toLowerCase().includes(lower)
+    );
+  }
+
+  const filteredQueries = useMemo(
+    () => (search ? queries.filter((q) => matchSearch(q, search)) : queries),
+    [queries, search],
+  );
+
+  const myQueries = filteredQueries.filter(
+    (q) =>
+      !q.Owner ||
+      !currentUser ||
+      q.Owner.toUpperCase() === currentUser.toUpperCase(),
+  );
+  const sharedQueries = filteredQueries.filter(
+    (q) =>
+      q.Owner &&
+      currentUser &&
+      q.Owner.toUpperCase() !== currentUser.toUpperCase(),
+  );
+
+  function highlightMatch(text: string, query: string) {
+    if (!query) return text;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="bg-amber-200 text-foreground rounded-sm px-0.5">
+          {text.slice(idx, idx + query.length)}
+        </mark>
+        {text.slice(idx + query.length)}
+      </>
+    );
+  }
 
   function refetchQueries() {
     setIsLoading(true);
@@ -297,6 +342,16 @@ export function SavedQueriesDialog({
           </div>
         ) : null}
 
+        <div className="relative border-b border-border px-4 py-2">
+          <Search className="absolute left-6 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search queries..."
+            className="h-7 pl-7 text-xs"
+          />
+        </div>
+
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <div className="space-y-1 p-3">
@@ -329,10 +384,16 @@ export function SavedQueriesDialog({
                 Retry
               </Button>
             </div>
-          ) : queries.length === 0 ? (
+          ) : filteredQueries.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
-              <div className="text-sm">No saved queries yet.</div>
-              {currentQueryText.trim() ? (
+              <div className="text-sm">
+                {search
+                  ? "No queries match your search."
+                  : queries.length === 0
+                    ? "No saved queries yet."
+                    : "No queries found."}
+              </div>
+              {!search && currentQueryText.trim() ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -348,24 +409,12 @@ export function SavedQueriesDialog({
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {queries.filter(
-                (q) =>
-                  !q.Owner ||
-                  !currentUser ||
-                  q.Owner.toUpperCase() === currentUser.toUpperCase(),
-              ).length > 0 ? (
+              {myQueries.length > 0 ? (
                 <div>
                   <div className="sticky top-0 z-10 border-b border-border bg-accent/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     My Queries
                   </div>
-                  {queries
-                    .filter(
-                      (q) =>
-                        !q.Owner ||
-                        !currentUser ||
-                        q.Owner.toUpperCase() === currentUser.toUpperCase(),
-                    )
-                    .map((q) => (
+                  {myQueries.map((q) => (
                       <div
                         key={q.QueryId}
                         className="flex items-start gap-3 px-4 py-3 transition hover:bg-accent/30"
@@ -373,7 +422,7 @@ export function SavedQueriesDialog({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-medium text-foreground">
-                              {q.QueryName || "Unnamed"}
+                              {highlightMatch(q.QueryName || "Unnamed", search)}
                             </span>
                             <Badge
                               variant="outline"
@@ -479,24 +528,12 @@ export function SavedQueriesDialog({
                     ))}
                 </div>
               ) : null}
-              {queries.filter(
-                (q) =>
-                  q.Owner &&
-                  currentUser &&
-                  q.Owner.toUpperCase() !== currentUser.toUpperCase(),
-              ).length > 0 ? (
+              {sharedQueries.length > 0 ? (
                 <div>
                   <div className="sticky top-0 z-10 border-b border-border bg-amber-50/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-amber-800">
                     Shared with me
                   </div>
-                  {queries
-                    .filter(
-                      (q) =>
-                        q.Owner &&
-                        currentUser &&
-                        q.Owner.toUpperCase() !== currentUser.toUpperCase(),
-                    )
-                    .map((q) => (
+                  {sharedQueries.map((q) => (
                       <div
                         key={q.QueryId}
                         className="flex items-start gap-3 px-4 py-3 transition hover:bg-accent/30"
@@ -504,7 +541,7 @@ export function SavedQueriesDialog({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-medium text-foreground">
-                              {q.QueryName || "Unnamed"}
+                              {highlightMatch(q.QueryName || "Unnamed", search)}
                             </span>
                             <Badge
                               variant="outline"
@@ -578,7 +615,7 @@ export function SavedQueriesDialog({
           <div className="flex items-center justify-between border-t border-border bg-[#f7fbff] px-5 py-2">
             <span className="text-xs text-muted-foreground">
               <span className="font-semibold text-foreground">
-                {queries.length}
+                {search ? `${filteredQueries.length} / ${queries.length}` : queries.length}
               </span>{" "}
               saved quer{queries.length !== 1 ? "ies" : "y"}
             </span>
