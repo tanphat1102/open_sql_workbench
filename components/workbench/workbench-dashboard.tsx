@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Check,
   ChevronDown,
   LogOut,
   Sidebar,
@@ -28,6 +30,7 @@ import {
 import { useWorkbench } from "@/hooks/use-workbench";
 import { toast } from "@/lib/toast";
 import { authService } from "@/services/authService";
+import { sqlAssistService } from "@/services/sqlAssistService";
 import type { SapSessionInfo } from "@/types/sap";
 
 type ResizeDragState =
@@ -96,6 +99,35 @@ export function WorkbenchDashboard() {
     needLogin,
   } = useWorkbench();
 
+  const queryClient = useQueryClient();
+
+  const { data: userProfiles = [] } = useQuery({
+    queryKey: ["userProfiles"],
+    queryFn: () => sqlAssistService.fetchUserProfiles(),
+    staleTime: 5 * 60_000,
+  });
+
+  function getCurrentProfileId() {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(
+      /(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/,
+    );
+    return match?.[1] ?? "";
+  }
+
+  const [selectedProfileId, setSelectedProfileId] = useState(getCurrentProfileId);
+
+  function handleSelectProfile(profileId: string) {
+    document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(profileId)}; path=/; SameSite=Lax`;
+    setSelectedProfileId(profileId);
+    setProfileOpen(false);
+    queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+    toast({
+      title: "Profile changed",
+      description: `Switched to profile "${profileId}". Reloading entities...`,
+    });
+  }
+
   async function refreshSessionInfo(isMounted = true) {
     try {
       const session = await authService.getSession();
@@ -143,6 +175,13 @@ export function WorkbenchDashboard() {
     });
     router.push("/login");
   }, [needLogin, router]);
+
+  useEffect(() => {
+    const current = getCurrentProfileId();
+    if (current) {
+      setSelectedProfileId(current);
+    }
+  }, [sessionInfo]);
 
   function handleProfileToggle() {
     setProfileOpen((current) => {
@@ -364,7 +403,7 @@ export function WorkbenchDashboard() {
                 <ChevronDown className="size-4" />
               </Button>
               {profileOpen ? (
-                <div className="absolute right-0 z-30 mt-2 w-56 rounded-md border border-border bg-white p-1 shadow-md">
+                <div className="absolute right-0 z-30 mt-2 w-64 rounded-md border border-border bg-white p-1 shadow-md">
                   <div className="border-b border-border px-3 py-2">
                     <div className="text-sm font-medium text-foreground">
                       {sessionInfo?.user || "SAP user"}
@@ -375,6 +414,38 @@ export function WorkbenchDashboard() {
                         : "SAP session"}
                     </div>
                   </div>
+                  {userProfiles.length > 0 ? (
+                    <div className="border-b border-border py-1">
+                      <div className="px-3 py-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                        Profiles
+                      </div>
+                      {userProfiles.map((p) => {
+                        const pid = p.ProfileId ?? "";
+                        const isActive = pid === selectedProfileId;
+
+                        return (
+                          <button
+                            key={pid}
+                            type="button"
+                            onClick={() => handleSelectProfile(pid)}
+                            className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-foreground transition hover:bg-accent"
+                          >
+                            <span className="flex-1 truncate">
+                              {pid}
+                              {p.Description ? (
+                                <span className="ml-1.5 text-xs text-muted-foreground">
+                                  — {p.Description}
+                                </span>
+                              ) : null}
+                            </span>
+                            {isActive ? (
+                              <Check className="size-4 shrink-0 text-primary" />
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => void handleLogout()}
@@ -560,6 +631,10 @@ pageInfo={resultPageInfo}
         entityName={propertiesEntityName}
         entityType={selectedEntity?.tags[1]}
         entityDescription={selectedEntity?.description}
+        onPreviewFields={(fieldNames) => {
+          const cols = fieldNames.join(", ");
+          setQueryText(`SELECT ${cols}\nFROM ${propertiesEntityName};\n`);
+        }}
       />
       <SavedQueriesDialog
         open={showSavedQueriesDialog}
