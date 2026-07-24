@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -8,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -16,7 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Eye, LoaderCircle, TableProperties, X } from "lucide-react";
+import { Eye, LoaderCircle, Search, TableProperties, X } from "lucide-react";
 import { parseSapDate } from "@/lib/sapParser";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEntity } from "@/types/workbench";
@@ -53,10 +55,34 @@ export function EntityBrowser({
   isLoading = false,
   onClose,
 }: EntityBrowserProps) {
+  const [search, setSearch] = useState("");
   const selectedEntity =
     entities.find((entity) => entity.name === selectedEntityName) ??
     entities[0];
   const selectedEntityType = selectedEntity?.tags[1] ?? "Object";
+
+  const filteredEntities = search
+    ? entities.filter(
+        (e) =>
+          e.name.toLowerCase().includes(search.toLowerCase()) ||
+          e.description?.toLowerCase().includes(search.toLowerCase()),
+      )
+    : entities;
+
+  function highlightMatch(text: string, query: string) {
+    if (!query) return text;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="bg-amber-200 text-foreground rounded-sm px-0.5">
+          {text.slice(idx, idx + query.length)}
+        </mark>
+        {text.slice(idx + query.length)}
+      </>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -89,6 +115,16 @@ export function EntityBrowser({
         </div>
       </CardHeader>
 
+      <div className="relative border-b border-border px-3 py-2">
+        <Search className="absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search entities..."
+          className="h-7 pl-7 text-xs"
+        />
+      </div>
+
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1 p-2">
@@ -105,7 +141,11 @@ export function EntityBrowser({
                     <div className="h-7 w-16 animate-pulse rounded-md bg-accent" />
                   </div>
                 ))
-              : entities.map((entity) => {
+              : filteredEntities.length === 0 ? (
+                  <div className="px-2 py-8 text-center text-xs text-muted-foreground">
+                    {search ? "No matching entities." : "No entities available."}
+                  </div>
+                ) : filteredEntities.map((entity) => {
                   const isSelected = entity.name === selectedEntityName;
 
                   return (
@@ -133,7 +173,7 @@ export function EntityBrowser({
                         className="flex min-w-0 flex-1 items-center gap-2 text-left"
                       >
                         <div className="truncate font-medium">
-                          {entity.name}
+                          {highlightMatch(entity.name, search)}
                         </div>
                         <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                           {entity.recordCount > 0
