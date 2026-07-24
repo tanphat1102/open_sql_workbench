@@ -1178,7 +1178,10 @@ export function SqlEditor({
           }),
           error.endColumn - error.startColumn,
         ),
-        severity: monaco.MarkerSeverity.Error,
+        severity:
+          error.severity === "warning"
+            ? monaco.MarkerSeverity.Warning
+            : monaco.MarkerSeverity.Error,
         message: error.message,
       })).concat(
         fieldValidationErrors.map((error) => ({
@@ -1377,7 +1380,10 @@ export function SqlEditor({
               }),
               error.endColumn - error.startColumn,
             ),
-            severity: monaco.MarkerSeverity.Error,
+            severity:
+              error.severity === "warning"
+                ? monaco.MarkerSeverity.Warning
+                : monaco.MarkerSeverity.Error,
             message: error.message,
           })).concat(
             fieldValidationErrors.map((error) => ({

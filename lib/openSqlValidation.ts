@@ -3,6 +3,7 @@ export type SqlValidationError = {
   startColumn: number;
   endColumn: number;
   lineNumber?: number;
+  severity?: "error" | "warning";
 };
 
 export type OpenSqlValidationOptions = {
@@ -122,7 +123,7 @@ function getJoinAliasNames(query: string) {
   }
 
   for (const joinMatch of query.matchAll(
-    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)\s+[A-Z0-9_./-]+\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
+    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN)\s+[A-Z0-9_./-]+\s+AS\s+([A-Z_][A-Z0-9_]*)/gi,
   )) {
     if (joinMatch[1]) {
       aliases.add(joinMatch[1].toUpperCase());
@@ -156,13 +157,13 @@ function validateJoinSql(
   )) {
     const joinText = joinMatch[0];
 
-    if (/^(INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)$/i.test(joinText)) {
+    if (/^(INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN)$/i.test(joinText)) {
       continue;
     }
 
     const joinIndex = joinMatch.index ?? findKeywordIndex(query, "JOIN");
     errors.push({
-      message: "JOIN supports INNER JOIN, LEFT JOIN, and LEFT OUTER JOIN only.",
+      message: "JOIN supports INNER JOIN, LEFT JOIN, LEFT OUTER JOIN, RIGHT JOIN, and RIGHT OUTER JOIN only.",
       startColumn: Math.max(1, joinIndex + 1),
       endColumn: Math.max(2, joinIndex + joinText.length + 1),
     });
@@ -180,7 +181,7 @@ function validateJoinSql(
   }
 
   for (const innerJoinTableMatch of query.matchAll(
-    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN)\s+([A-Z0-9_./-]+)(?:\s+AS\s+([A-Z_][A-Z0-9_]*))?/gi,
+    /\b(?:INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN)\s+([A-Z0-9_./-]+)(?:\s+AS\s+([A-Z_][A-Z0-9_]*))?/gi,
   )) {
     if (!innerJoinTableMatch[1]) {
       continue;
@@ -370,6 +371,48 @@ export function validateOpenSql(
   }
 
   if (firstKeyword === "SELECT") {
+    // Block SELECT DISTINCT
+    const distinctMatch = /\bSELECT\s+DISTINCT\b/i.exec(query);
+    if (distinctMatch) {
+      errors.push({
+        message: "SELECT DISTINCT is not supported. Use COUNT(DISTINCT field) instead.",
+        startColumn: distinctMatch.index + 1,
+        endColumn: distinctMatch.index + distinctMatch[0].length + 1,
+      });
+    }
+
+    // FORBIDDEN_KEYWORD / FORBIDDEN_SYNTAX checks
+    const forbiddenKeywords = [
+      { pattern: /\bINTO\b/i, label: "INTO" },
+      { pattern: /\bFOR\s+ALL\s+ENTRIES\b/i, label: "FOR ALL ENTRIES" },
+      { pattern: /\bAPPENDING\b/i, label: "APPENDING" },
+      { pattern: /\bDELETE\s+FROM\b/i, label: "DELETE FROM" },
+      { pattern: /\bUPDATE\b/i, label: "UPDATE" },
+      { pattern: /\bINSERT\b/i, label: "INSERT" },
+    ];
+
+    for (const { pattern, label } of forbiddenKeywords) {
+      const match = pattern.exec(query);
+      if (match && match.index !== undefined) {
+        errors.push({
+          message: `Forbidden keyword: ${label} is not allowed. Only SELECT queries are supported.`,
+          startColumn: match.index + 1,
+          endColumn: match.index + match[0].length + 1,
+        });
+      }
+    }
+
+    // Subquery check
+    const subqueryPattern = /\(\s*SELECT\b/i;
+    const subqueryMatch = subqueryPattern.exec(query);
+    if (subqueryMatch && subqueryMatch.index !== undefined) {
+      errors.push({
+        message: "Subqueries are not supported.",
+        startColumn: subqueryMatch.index + 1,
+        endColumn: subqueryMatch.index + subqueryMatch[0].length + 1,
+      });
+    }
+
     const topMatch = /\bTOP\s+([^\s,]+)/i.exec(query);
     if (topMatch?.[1] && !/^\d+$/.test(topMatch[1])) {
       errors.push({
@@ -504,6 +547,27 @@ export function validateOpenSql(
           endColumn: whereIndex + "WHERE".length + 4,
         });
       }
+
+      // Validate IN clause
+      for (const inMatch of query.matchAll(
+        /\bIN\s*\(\s*(SELECT\b)?/gi,
+      )) {
+        if (inMatch[1]) {
+          // IN (SELECT ...) — subquery
+          errors.push({
+            message: "IN with subquery is not supported.",
+            startColumn: (inMatch.index ?? 0) + 1,
+            endColumn: (inMatch.index ?? 0) + inMatch[0].length + 1,
+          });
+        }
+      }
+
+      // Validate BETWEEN
+      for (const betweenMatch of query.matchAll(
+        /\bBETWEEN\s+\S+\s+AND\s+\S+/gi,
+      )) {
+        // BETWEEN is valid — no error
+      }
     }
 
     const groupByIndex = findPatternIndex(query, /\bGROUP\s+BY\b/i);
@@ -547,6 +611,23 @@ export function validateOpenSql(
           endColumn: orderByIndex + "ORDER BY".length + 1,
         });
       }
+
+      // Check for ORDER BY with expressions (unsupported)
+      if (orderByClause && /[+\-*/]/.test(orderByClause)) {
+        errors.push({
+          message: "ORDER BY does not support arithmetic expressions.",
+          startColumn: orderByIndex + "ORDER BY".length + 1,
+          endColumn: orderByIndex + "ORDER BY".length + orderByClause.length + 1,
+        });
+      }
+    } else if (fromIndex >= 0 && query.length > 0) {
+      // Warning: ORDER BY recommended for pagination
+      errors.push({
+        message: "ORDER BY is recommended for consistent pagination results.",
+        startColumn: query.length + 1,
+        endColumn: query.length + 1,
+        severity: "warning",
+      });
     }
 
     const limitMatch = /\bLIMIT\s+([^\s,]+)/i.exec(query);
