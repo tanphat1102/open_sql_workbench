@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { EntityBrowser } from "@/components/workbench/entity-browser";
+import { ProfileSelectionDialog } from "@/components/workbench/profile-selection-dialog";
 import { QueryWorkbench } from "@/components/workbench/query-workbench";
 import { ResultsTable } from "@/components/workbench/results-table";
 import { TablePropertiesDialog } from "@/components/workbench/table-properties-dialog";
@@ -77,6 +78,59 @@ export function WorkbenchDashboard() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const lowerStackRef = useRef<HTMLDivElement | null>(null);
   const resizeDragRef = useRef<ResizeDragState | null>(null);
+
+  const queryClient = useQueryClient();
+
+  const [profileResolved, setProfileResolved] = useState(false);
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+
+  const {
+    data: userProfiles = [],
+    isLoading: profilesLoading,
+  } = useQuery({
+    queryKey: ["userProfiles"],
+    queryFn: () => sqlAssistService.fetchUserProfiles(),
+    staleTime: 5 * 60_000,
+  });
+
+  function getCurrentProfileId() {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(
+      /(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/,
+    );
+    return match?.[1] ?? "";
+  }
+
+  // Resolve profile: auto-select single, show dialog for multiple, fall through on error
+  useEffect(() => {
+    if (profilesLoading) return;
+
+    if (userProfiles.length === 1) {
+      const pid = userProfiles[0].ProfileId ?? "";
+      if (pid) {
+        document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(pid)}; path=/; SameSite=Lax`;
+        setSelectedProfileId(pid);
+      }
+      setProfileResolved(true);
+      return;
+    }
+
+    if (userProfiles.length > 1) {
+      const current = getCurrentProfileId();
+      if (current && userProfiles.some((p) => p.ProfileId === current)) {
+        setSelectedProfileId(current);
+        setProfileResolved(true);
+      } else {
+        setShowProfileDialog(true);
+      }
+      return;
+    }
+
+    // Zero profiles returned — let workbench handle the error
+    setProfileResolved(true);
+  }, [userProfiles, profilesLoading]);
+
   const {
     selectedEntity,
     selectedEntityName,
@@ -97,34 +151,18 @@ export function WorkbenchDashboard() {
     previewTable,
     loadResultPage,
     needLogin,
-  } = useWorkbench();
-
-  const queryClient = useQueryClient();
-
-  const { data: userProfiles = [] } = useQuery({
-    queryKey: ["userProfiles"],
-    queryFn: () => sqlAssistService.fetchUserProfiles(),
-    staleTime: 5 * 60_000,
-  });
-
-  function getCurrentProfileId() {
-    if (typeof document === "undefined") return "";
-    const match = document.cookie.match(
-      /(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/,
-    );
-    return match?.[1] ?? "";
-  }
-
-  const [selectedProfileId, setSelectedProfileId] = useState(getCurrentProfileId);
+  } = useWorkbench({ enabled: profileResolved && !showProfileDialog });
 
   function handleSelectProfile(profileId: string) {
     document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(profileId)}; path=/; SameSite=Lax`;
     setSelectedProfileId(profileId);
+    setShowProfileDialog(false);
+    setProfileResolved(true);
     setProfileOpen(false);
     queryClient.invalidateQueries({ queryKey: ["snapshot"] });
     toast({
-      title: "Profile changed",
-      description: `Switched to profile "${profileId}". Reloading entities...`,
+      title: "Profile selected",
+      description: `Using profile "${profileId}".`,
     });
   }
 
@@ -330,14 +368,34 @@ export function WorkbenchDashboard() {
   const hasLowerPanel = showResults || showMessages;
   const isResizing = activeResize !== null;
 
+  // Show loading while profiles are being fetched
+  if (profilesLoading) {
+    return (
+      <main className="fiori-page flex h-dvh items-center justify-center px-3 py-3 text-sm">
+        <div className="flex flex-col items-center gap-4">
+          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Loading your profiles...</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main
-      className={`fiori-page h-dvh overflow-hidden px-3 py-3 text-sm sm:px-4 ${
-        isResizing ? "cursor-grabbing select-none" : ""
-      }`}
-    >
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-3">
-        <header className="fiori-shell-bar flex flex-col gap-2 rounded-lg px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+    <>
+      <ProfileSelectionDialog
+        open={showProfileDialog}
+        profiles={userProfiles}
+        currentUser={sessionInfo?.user}
+        onSelect={handleSelectProfile}
+      />
+
+      <main
+        className={`fiori-page h-dvh overflow-hidden px-3 py-3 text-sm sm:px-4 ${
+          isResizing ? "cursor-grabbing select-none" : ""
+        }`}
+      >
+        <section className="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-3">
+          <header className="fiori-shell-bar flex flex-col gap-2 rounded-lg px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
               Open SQL Workbench
@@ -645,5 +703,6 @@ pageInfo={resultPageInfo}
         onRunQuery={executeAndShowResults}
       />
     </main>
+    </>
   );
 }
