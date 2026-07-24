@@ -23,6 +23,9 @@ export type WorkbenchColumn = {
   length?: number;
   decimals?: number;
   isKey?: boolean;
+  originType?: string;
+  originStructure?: string;
+  includeDepth?: number;
 };
 
 export type WorkbenchMetric = {

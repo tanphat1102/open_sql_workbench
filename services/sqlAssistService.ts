@@ -5,10 +5,16 @@ import type {
   SapSqlwbField,
   SapSqlwbSavedQuery,
   SapSqlwbTable,
+  SapSqlwbUserProfile,
 } from "@/types/sap";
 
 const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE!}`;
-const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
+
+function getProfileId() {
+  if (typeof document === "undefined") return (process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "");
+  const match = document.cookie.match(/(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/);
+  return match?.[1] || (process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "");
+}
 
 function quoteODataString(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
@@ -44,7 +50,7 @@ export const sqlAssistService = {
   fetchAllTables: async (maxRows = 10000) => {
     return sapClient.fetchCollection<SapSqlwbTable>(
       buildFunctionPath("SearchTables", {
-        ProfileId: quoteODataString(queryProfileId),
+        ProfileId: quoteODataString(getProfileId()),
         SearchText: quoteODataString(""),
         MaxRows: maxRows,
       }),
@@ -54,7 +60,7 @@ export const sqlAssistService = {
   searchTables: async (searchText: string, maxRows = 50) => {
     return sapClient.fetchCollection<SapSqlwbTable>(
       buildFunctionPath("SearchTables", {
-        ProfileId: quoteODataString(queryProfileId),
+        ProfileId: quoteODataString(getProfileId()),
         SearchText: quoteODataString(searchText),
         MaxRows: maxRows,
       }),
@@ -64,14 +70,14 @@ export const sqlAssistService = {
   getFields: async (objectName: string) => {
     return sapClient.fetchCollection<SapSqlwbField>(
       buildFunctionPath("GetFields", {
-        ProfileId: quoteODataString(queryProfileId),
+        ProfileId: quoteODataString(getProfileId()),
         ObjectName: quoteODataString(objectName),
       }),
     );
   },
 
   listSavedQueries: async (profileId?: string, top = 100, skip = 0) => {
-    const pid = profileId ?? queryProfileId;
+    const pid = profileId ?? getProfileId();
     return sapClient.fetchCollection<SapSqlwbSavedQuery>(
       buildSavedQueryListPath(pid, top, skip),
     );
@@ -85,7 +91,7 @@ export const sqlAssistService = {
     tags?: string;
     description?: string;
   }): Promise<SapSaveQueryResult> => {
-    const pid = params.profileId ?? queryProfileId;
+    const pid = params.profileId ?? getProfileId();
     // Build URL manually — buildFunctionPath drops empty params, but Gateway
     // requires ALL declared function import parameters (even empty strings).
     const qs = new URLSearchParams({
@@ -116,7 +122,7 @@ export const sqlAssistService = {
     tags?: string;
     description?: string;
   }): Promise<SapSaveQueryResult> => {
-    const pid = params.profileId ?? queryProfileId;
+    const pid = params.profileId ?? getProfileId();
     const qs = new URLSearchParams({
       ProfileId: quoteODataString(pid),
       QueryId: quoteODataString(params.queryId),
@@ -132,13 +138,14 @@ export const sqlAssistService = {
     );
     const data = response.d;
     if (!data) return {};
-    if ("UpdateSavedQuery" in data && data.UpdateSavedQuery) return data.UpdateSavedQuery;
+    if ("UpdateSavedQuery" in data && data.UpdateSavedQuery)
+      return data.UpdateSavedQuery;
     if ("SaveQuery" in data && data.SaveQuery) return data.SaveQuery;
     return data as SapSaveQueryResult;
   },
 
   deleteSavedQuery: async (queryId: string, profileId?: string) => {
-    const pid = profileId ?? queryProfileId;
+    const pid = profileId ?? getProfileId();
     const qs = new URLSearchParams({
       ProfileId: quoteODataString(pid),
       QueryId: quoteODataString(queryId),
@@ -149,7 +156,18 @@ export const sqlAssistService = {
     );
     const data = response.d;
     if (!data) return {};
-    if ("DeleteSavedQuery" in data && data.DeleteSavedQuery) return data.DeleteSavedQuery;
+    if ("DeleteSavedQuery" in data && data.DeleteSavedQuery)
+      return data.DeleteSavedQuery;
     return data as SapSaveQueryResult;
+  },
+
+  fetchUserProfiles: async () => {
+    const params = new URLSearchParams({
+      $format: "json",
+      $select: "ProfileId,PfcgRole,Description,MaxRows",
+    });
+    return sapClient.fetchCollection<SapSqlwbUserProfile>(
+      `${servicePath}/SqlwbUserProfileSet?${params.toString()}`,
+    );
   },
 };

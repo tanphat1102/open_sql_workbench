@@ -20,6 +20,7 @@ export type SapSessionInfo = {
   success: boolean;
   user?: string;
   client?: string;
+  profile?: string;
 };
 
 export type SapQueryParam = string | number | boolean | null | undefined;
@@ -67,6 +68,9 @@ export type SapSqlwbColumn = {
   Decimals?: number | string;
   IsKey?: boolean | string;
   Label?: string;
+  OriginType?: string;
+  OriginStructure?: string;
+  IncludeDepth?: number | string;
 };
 
 export type SapSqlwbPageChunk = {
@@ -97,6 +101,9 @@ export type SapSqlwbField = {
   Decimals?: number | string;
   IsKey?: boolean | string;
   Label?: string;
+  OriginType?: string;
+  OriginStructure?: string;
+  IncludeDepth?: number | string;
 };
 
 export type SapSqlwbSavedQuery = {
@@ -123,4 +130,11 @@ export type SapSaveQueryEnvelope = {
 
 export type SapRunSavedQueryEnvelope = {
   d?: SapRunQueryResult | { RunSavedQuery?: SapRunQueryResult };
+};
+
+export type SapSqlwbUserProfile = {
+  ProfileId?: string;
+  PfcgRole?: string;
+  Description?: string;
+  MaxRows?: number | string;
 };

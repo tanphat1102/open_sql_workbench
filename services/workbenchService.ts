@@ -24,7 +24,11 @@ import type {
 } from "@/types/sap";
 
 const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE!}`;
-const queryProfileId = process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID ?? "DEV";
+function getProfileId() {
+  if (typeof document === "undefined") return process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "";
+  const match = document.cookie.match(/(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/);
+  return match?.[1] || process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "";
+}
 
 const metrics: WorkbenchMetric[] = [
   { label: "Entity sets", value: "0", detail: "Loading..." },
@@ -101,7 +105,7 @@ function buildRunQueryPath(queryText: string, page = 1) {
     encodeURIComponent(value).replace(/'/g, "%27");
   const sqlText = queryText.replace(/\s+/g, " ").trim();
   const queryParts = [
-    `ProfileId='${encodeODataFunctionString(queryProfileId)}'`,
+    `ProfileId='${encodeODataFunctionString(getProfileId())}'`,
     `SqlText='${encodeODataFunctionString(sqlText)}'`,
     `Page=${page}`,
   ];
@@ -111,7 +115,7 @@ function buildRunQueryPath(queryText: string, page = 1) {
 
 function buildPreviewTablePath(objectName: string, maxRows = 100, page = 1) {
   const searchParams = new URLSearchParams({
-    ProfileId: `'${queryProfileId}'`,
+    ProfileId: `'${getProfileId()}'`,
     ObjectName: `'${escapeODataStringLiteral(objectName)}'`,
     MaxRows: String(maxRows),
     Page: String(page),
@@ -405,6 +409,12 @@ function normalizeColumns(columns: SapSqlwbColumn[], rows: WorkbenchRow[]) {
               ? undefined
               : normalizeNumber(column.Decimals),
           isKey: normalizeBoolean(column.IsKey),
+          originType: column.OriginType?.trim() || undefined,
+          originStructure: column.OriginStructure?.trim() || undefined,
+          includeDepth:
+            column.IncludeDepth === undefined
+              ? undefined
+              : normalizeNumber(column.IncludeDepth),
         } satisfies WorkbenchColumn,
       ];
     })
