@@ -101,7 +101,7 @@ function getResultPageCacheKey(cacheKey: string, page: number) {
   return `${cacheKey}:${page}`;
 }
 
-export function useWorkbench() {
+export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
   const [selectedEntityName, setSelectedEntityName] = useState("");
   const [queryText, setQueryText] = useState("");
   const [previewingEntityName, setPreviewingEntityName] = useState("");
@@ -144,6 +144,7 @@ export function useWorkbench() {
       return { ...live, isLive };
     },
     staleTime: 60_000,
+    enabled,
   });
 
   const entities = snapshot?.entities ?? [];
