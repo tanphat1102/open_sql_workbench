@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bookmark, LoaderCircle, Pencil, Play, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bookmark, Download, LoaderCircle, Pencil, Play, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -24,6 +23,55 @@ import {
 import { sqlAssistService } from "@/services/sqlAssistService";
 import { toast } from "@/lib/toast";
 import type { SapSqlwbSavedQuery } from "@/types/sap";
+
+function downloadSqlFile(fileName: string, text: string) {
+  const safeName = (fileName || "query").replace(/[^a-z0-9_-]+/gi, "_");
+  const blob = new Blob([text], { type: "text/sql;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = `${safeName || "query"}.sql`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildExportAllSql(queries: SapSqlwbSavedQuery[]) {
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const header = [
+    "-- ============================================================================",
+    "-- Open SQL Workbench - Saved Queries Export",
+    `-- Exported at: ${new Date().toISOString()}`,
+    `-- Total queries: ${queries.length}`,
+    "-- ============================================================================",
+    "",
+  ].join("\n");
+
+  const body = queries
+    .map((q) => {
+      const lines = [
+        "-- ----------------------------------------------------------------------------",
+        `-- Query: ${q.QueryName || "Untitled"}`,
+        q.Owner ? `-- Owner: ${q.Owner}` : null,
+        q.Visibility ? `-- Visibility: ${q.Visibility}` : null,
+        q.Tags ? `-- Tags: ${q.Tags}` : null,
+        q.Description ? `-- Description: ${q.Description}` : null,
+        "-- ----------------------------------------------------------------------------",
+        q.QueryText?.trim() || "-- Empty query text",
+        "",
+      ].filter(Boolean);
+
+      return lines.join("\n");
+    })
+    .join("\n");
+
+  return {
+    content: `${header}\n${body}`,
+    fileName: `saved_queries_export_${timestamp}.sql`,
+  };
+}
 
 type SavedQueriesDialogProps = {
   open: boolean;
@@ -200,6 +248,27 @@ export function SavedQueriesDialog({
     } finally {
       setDeletingId(null);
     }
+  }
+
+  function handleDownloadSql(queryName: string, queryText: string) {
+    if (!queryText) return;
+    downloadSqlFile(queryName, queryText);
+    toast({
+      title: "Downloaded .sql file",
+      description: `${(queryName || "query").replace(/[^a-z0-9_-]+/gi, "_")}.sql`,
+      variant: "success",
+    });
+  }
+
+  function handleExportAllSql(queriesToExport: SapSqlwbSavedQuery[]) {
+    if (queriesToExport.length === 0) return;
+    const { content, fileName } = buildExportAllSql(queriesToExport);
+    downloadSqlFile(fileName.replace(/\.sql$/, ""), content);
+    toast({
+      title: "Exported saved queries",
+      description: `${queriesToExport.length} quer${queriesToExport.length === 1 ? "y" : "ies"} exported to ${fileName}`,
+      variant: "success",
+    });
   }
 
   return (
@@ -490,6 +559,20 @@ export function SavedQueriesDialog({
                             type="button"
                             variant="outline"
                             size="icon-xs"
+                            onClick={() =>
+                              q.QueryText &&
+                              handleDownloadSql(q.QueryName || "query", q.QueryText)
+                            }
+                            disabled={!q.QueryText}
+                            className="size-7 border-border text-primary hover:bg-accent"
+                            title="Download .sql file"
+                          >
+                            <Download className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
                             onClick={() => {
                               setEditingQueryId(q.QueryId ?? null);
                               setSaveName(q.QueryName || "");
@@ -602,6 +685,20 @@ export function SavedQueriesDialog({
                               <Play className="size-3.5" />
                             </Button>
                           ) : null}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            onClick={() =>
+                              q.QueryText &&
+                              handleDownloadSql(q.QueryName || "query", q.QueryText)
+                            }
+                            disabled={!q.QueryText}
+                            className="size-7 border-border text-primary hover:bg-accent"
+                            title="Download .sql file"
+                          >
+                            <Download className="size-3.5" />
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -619,15 +716,27 @@ export function SavedQueriesDialog({
               </span>{" "}
               saved quer{queries.length !== 1 ? "ies" : "y"}
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="border-border"
-            >
-              Close
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportAllSql(filteredQueries)}
+                className="border-border bg-white text-xs text-primary hover:bg-accent"
+              >
+                <Download className="size-3.5 mr-1" />
+                Export All (.sql)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="border-border"
+              >
+                Close
+              </Button>
+            </div>
           </div>
         ) : null}
       </DialogContent>

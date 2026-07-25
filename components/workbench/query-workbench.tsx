@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Bookmark, LoaderCircle, Wand2 } from "lucide-react";
+import { Bookmark, Download, LoaderCircle, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,25 @@ export function QueryWorkbench({
   const [templateSelectValue, setTemplateSelectValue] = useState<
     string | undefined
   >();
+
+  function handleDownloadSql() {
+    if (!queryText.trim()) return;
+    const safeName = (selectedEntityName || "query").replace(/[^a-z0-9_-]+/gi, "_");
+    const blob = new Blob([queryText], { type: "text/sql;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeName}.sql`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast({
+      title: "Downloaded .sql file",
+      description: `${safeName}.sql`,
+      variant: "success",
+    });
+  }
 
   function handleRunQuery() {
     const selected = window.__openSqlWorkbenchEditor?.getSelection();
@@ -180,6 +199,21 @@ export function QueryWorkbench({
                 <TooltipContent>Browse and manage saved queries</TooltipContent>
               </Tooltip>
             ) : null}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDownloadSql}
+                  disabled={!queryText.trim()}
+                  className="border-[#b8d6ef] bg-white text-primary hover:bg-accent"
+                >
+                  <Download className="size-4" />
+                  .sql
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Download query as .sql file</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

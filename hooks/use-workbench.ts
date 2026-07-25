@@ -478,6 +478,16 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
   function runQuery(page = 1) {
     const effectiveQuery = queryTextOverrideRef.current ?? queryText;
     queryTextOverrideRef.current = null;
+
+    if (effectiveQuery.trim() && !/\border\s+by\b/i.test(effectiveQuery)) {
+      toast({
+        title: "Missing ORDER BY clause",
+        description:
+          "Query without ORDER BY does not support reliable data pagination across pages.",
+        variant: "warning",
+      });
+    }
+
     executeMutation.mutate({
       type: "query",
       queryText: effectiveQuery,

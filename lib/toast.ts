@@ -1,4 +1,4 @@
-export type ToastVariant = "default" | "destructive" | "success";
+export type ToastVariant = "default" | "destructive" | "success" | "warning";
 
 export type ToastInput = {
   title: string;
