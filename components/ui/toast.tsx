@@ -33,7 +33,7 @@ function Toast({
   variant = "default",
   ...props
 }: React.ComponentProps<typeof ToastPrimitive.Root> & {
-  variant?: "default" | "destructive" | "success";
+  variant?: "default" | "destructive" | "success" | "warning";
 }) {
   return (
     <ToastPrimitive.Root
@@ -47,6 +47,8 @@ function Toast({
           "border-red-200 bg-red-50 text-red-900",
         variant === "success" &&
           "border-emerald-200 bg-emerald-50 text-emerald-950",
+        variant === "warning" &&
+          "border-amber-200 bg-amber-50 text-amber-900",
         className,
       )}
       {...props}
@@ -78,7 +80,7 @@ function ToastClose({
     <ToastPrimitive.Close
       data-slot="toast-close"
       className={cn(
-        "absolute right-2 top-2 rounded-md p-1 text-foreground/60 opacity-80 transition hover:bg-black/5 hover:text-foreground focus:outline-none focus:ring-3 focus:ring-ring/25 group-data-[variant=destructive]:text-destructive/70 group-data-[variant=destructive]:hover:text-destructive",
+        "absolute right-2 top-2 rounded-md p-1 text-foreground/60 opacity-80 transition hover:bg-black/5 hover:text-foreground focus:outline-none focus:ring-3 focus:ring-ring/25 group-data-[variant=destructive]:text-destructive/70 group-data-[variant=destructive]:hover:text-destructive group-data-[variant=warning]:text-amber-900/70 group-data-[variant=warning]:hover:text-amber-900",
         className,
       )}
       {...props}
