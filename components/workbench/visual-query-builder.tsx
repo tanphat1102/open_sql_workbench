@@ -432,6 +432,7 @@ function centerPosition(index: number) {
 function getJoinLabel(join: BuilderJoin) {
   if (join.joinType === "INNER JOIN") return "INNER";
   if (join.joinType === "RIGHT OUTER JOIN") return "RIGHT";
+  if (join.joinType === "LEFT JOIN") return "LEFT";
   return "LEFT";
 }
 
@@ -1013,7 +1014,7 @@ export function VisualQueryBuilder({
                 </marker>
               </defs>
               {joinConnectors.map(({ join, geometry }) => {
-                const isLeftJoin = join.joinType === "LEFT OUTER JOIN";
+                const isLeftJoin = join.joinType === "LEFT OUTER JOIN" || join.joinType === "LEFT JOIN";
                 const isRightJoin = join.joinType === "RIGHT OUTER JOIN";
                 const isOuter = isLeftJoin || isRightJoin;
 

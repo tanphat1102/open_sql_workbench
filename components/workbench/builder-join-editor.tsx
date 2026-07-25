@@ -50,8 +50,9 @@ export function BuilderJoinEditor({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="INNER JOIN">Inner join</SelectItem>
-          <SelectItem value="LEFT OUTER JOIN">Left join</SelectItem>
-          <SelectItem value="RIGHT OUTER JOIN">Right join</SelectItem>
+          <SelectItem value="LEFT JOIN">Left join</SelectItem>
+          <SelectItem value="LEFT OUTER JOIN">Left outer join</SelectItem>
+          {/* <SelectItem value="RIGHT OUTER JOIN">Right join</SelectItem> */}
         </SelectContent>
       </Select>
       <div className="flex items-center gap-1">
@@ -66,7 +67,8 @@ export function BuilderJoinEditor({
               leftField: join.rightField,
               rightField: join.leftField,
               joinType:
-                join.joinType === "LEFT OUTER JOIN"
+                join.joinType === "LEFT OUTER JOIN" ||
+                join.joinType === "LEFT JOIN"
                   ? "RIGHT OUTER JOIN"
                   : join.joinType === "RIGHT OUTER JOIN"
                     ? "LEFT OUTER JOIN"
