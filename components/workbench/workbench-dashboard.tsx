@@ -193,6 +193,28 @@ export function WorkbenchDashboard() {
     };
   }, []);
 
+  // Periodic session check — auto-logout when session expires
+  useEffect(() => {
+    const checkSession = () => {
+      authService.getSession().then((session) => {
+        if (!session) {
+          toast({
+            title: "Session expired",
+            description: "Your SAP session has timed out. Please sign in again.",
+            variant: "destructive",
+          });
+          router.push("/login");
+        }
+      }).catch(() => {
+        // Session check failed — assume logged out
+        router.push("/login");
+      });
+    };
+
+    const interval = setInterval(checkSession, 30_000);
+    return () => clearInterval(interval);
+  }, [router]);
+
   useEffect(() => {
     if (!needLogin) {
       return;
