@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpDown,
   Check,
@@ -72,61 +72,12 @@ type FieldGroup = {
   startPosition: number;
 };
 
-function buildGroups(fields: SapSqlwbField[]): FieldGroup[] {
-  const groupMap = new Map<string, FieldGroup>();
-
-  fields.forEach((f, idx) => {
-    const originType = f.OriginType || "DIRECT";
-    const originStructure = f.OriginStructure || "";
-    const depth = normalizeNumber(f.IncludeDepth, 0);
-
-    if (originType === "DIRECT" || originType === "CALCULATED" || !originStructure) {
-      // Put each DIRECT/CALCULATED field in its own single-field group keyed uniquely
-      const key = `__direct__${f.FieldName ?? idx}`;
-      groupMap.set(key, {
-        key,
-        label: "",
-        originType,
-        depth: 0,
-        fields: [f],
-        startPosition: normalizeNumber(f.Position, idx),
-      });
-    } else {
-      const groupKey = `__struct__${originStructure}__${depth}`;
-      const existing = groupMap.get(groupKey);
-      if (existing) {
-        existing.fields.push(f);
-        existing.startPosition = Math.min(
-          existing.startPosition,
-          normalizeNumber(f.Position, idx),
-        );
-      } else {
-        groupMap.set(groupKey, {
-          key: groupKey,
-          label: originStructure,
-          originType,
-          depth,
-          fields: [f],
-          startPosition: normalizeNumber(f.Position, idx),
-        });
-      }
-    }
-  });
-
-  return Array.from(groupMap.values()).sort(
-    (a, b) => a.startPosition - b.startPosition,
-  );
-}
-
 function matchesSearch(field: SapSqlwbField, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
-  return [
-    field.FieldName,
-    field.JsonKey,
-    field.Element,
-    field.Label,
-  ].some((v) => v?.toLowerCase().includes(q));
+  return [field.FieldName, field.JsonKey, field.Element, field.Label].some(
+    (v) => v?.toLowerCase().includes(q),
+  );
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -137,6 +88,28 @@ const SORT_LABELS: Record<SortKey, string> = {
 
 const SKELETON_COLUMNS = 10;
 
+/* Highlight match helper */
+function highlightMatch(text: string, query: string) {
+  if (!query || !text) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx < 0) return text;
+
+  const before = text.slice(0, idx);
+  const match = text.slice(idx, idx + query.length);
+  const after = text.slice(idx + query.length);
+
+  return (
+    <>
+      {before}
+      <mark className="bg-amber-100 text-amber-900 rounded-sm px-px">
+        {match}
+      </mark>
+      {after}
+    </>
+  );
+}
+
+/* Main Dialog Component */
 export function TablePropertiesDialog({
   open,
   onOpenChange,
@@ -153,7 +126,9 @@ export function TablePropertiesDialog({
   const [sortKey, setSortKey] = useState<SortKey>("position");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     if (!open || !entityName) return;
@@ -189,16 +164,54 @@ export function TablePropertiesDialog({
     }
 
     void loadFields();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [open, entityName]);
 
-  const groups = useMemo(() => {
+  /* Tách direct fields và groups, sắp xếp theo tầng */
+  const { directFields, groups } = useMemo(() => {
     let filtered = fields;
     if (searchQuery) {
       filtered = fields.filter((f) => matchesSearch(f, searchQuery));
     }
 
-    filtered = [...filtered].sort((a, b) => {
+    const direct: SapSqlwbField[] = [];
+    const groupMap = new Map<string, FieldGroup>();
+
+    filtered.forEach((f, idx) => {
+      const originType = f.OriginType || "DIRECT";
+      const originStructure = f.OriginStructure || "";
+      const depth = normalizeNumber(f.IncludeDepth, 0);
+
+      if (
+        originType === "DIRECT" ||
+        originType === "CALCULATED" ||
+        !originStructure
+      ) {
+        direct.push(f);
+      } else {
+        const groupKey = `__struct__${originStructure}__${depth}`;
+        if (!groupMap.has(groupKey)) {
+          groupMap.set(groupKey, {
+            key: groupKey,
+            label: originStructure,
+            originType,
+            depth,
+            fields: [],
+            startPosition: normalizeNumber(f.Position, idx),
+          });
+        }
+        const group = groupMap.get(groupKey)!;
+        group.fields.push(f);
+        group.startPosition = Math.min(
+          group.startPosition,
+          normalizeNumber(f.Position, idx),
+        );
+      }
+    });
+
+    const sortFn = (a: SapSqlwbField, b: SapSqlwbField) => {
       let cmp = 0;
       if (sortKey === "position") {
         cmp = normalizeNumber(a.Position, 0) - normalizeNumber(b.Position, 0);
@@ -208,32 +221,55 @@ export function TablePropertiesDialog({
         cmp = (a.AbapType ?? "").localeCompare(b.AbapType ?? "");
       }
       return sortDir === "asc" ? cmp : -cmp;
+    };
+
+    direct.sort(sortFn);
+
+    const groupsArr = Array.from(groupMap.values());
+    if (sortKey === "position") {
+      groupsArr.sort((a, b) => a.startPosition - b.startPosition);
+    } else if (sortKey === "name") {
+      groupsArr.sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    groupsArr.forEach((group) => {
+      group.fields.sort(sortFn);
     });
 
-    return buildGroups(filtered);
+    return { directFields: direct, groups: groupsArr };
   }, [fields, searchQuery, sortKey, sortDir]);
 
   const isSearching = searchQuery.length > 0;
-  const filteredCount = groups.reduce((sum, g) => sum + g.fields.length, 0);
+  const totalFields = fields.length;
+  const keyFieldCount = fields.filter((f) => normalizeBoolean(f.IsKey)).length;
+  const selectedCount = selectedFields.size;
+
+  const visibleFieldNames = useMemo(() => {
+    const names: string[] = [];
+    directFields.forEach((f) => {
+      if (f.FieldName) names.push(f.FieldName);
+    });
+    groups.forEach((group) => {
+      if (!collapsedGroups.has(group.key)) {
+        group.fields.forEach((f) => {
+          if (f.FieldName) names.push(f.FieldName);
+        });
+      }
+    });
+    return new Set(names);
+  }, [directFields, groups, collapsedGroups]);
 
   const allFieldNames = useMemo(
     () => new Set(fields.map((f) => f.FieldName ?? "")),
     [fields],
   );
 
-  const visibleFieldNames = useMemo(() => {
-    const names: string[] = [];
-    groups.forEach((g) => {
-      if (collapsedGroups.has(g.key) && g.originType !== "DIRECT" && g.originType !== "CALCULATED") return;
-      g.fields.forEach((f) => {
-        if (f.FieldName) names.push(f.FieldName);
-      });
-    });
-    return new Set(names);
-  }, [groups, collapsedGroups]);
-
-  const allSelected = visibleFieldNames.size > 0 && [...visibleFieldNames].every((n) => selectedFields.has(n));
-  const someSelected = [...visibleFieldNames].some((n) => selectedFields.has(n));
+  const allSelected =
+    visibleFieldNames.size > 0 &&
+    [...visibleFieldNames].every((n) => selectedFields.has(n));
+  const someSelected = [...visibleFieldNames].some((n) =>
+    selectedFields.has(n),
+  );
 
   function toggleSelectAll() {
     setSelectedFields((prev) => {
@@ -275,10 +311,6 @@ export function TablePropertiesDialog({
     }
   }
 
-  const totalFields = fields.length;
-  const keyFieldCount = fields.filter((f) => normalizeBoolean(f.IsKey)).length;
-  const selectedCount = selectedFields.size;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -292,7 +324,10 @@ export function TablePropertiesDialog({
               <DialogTitle className="flex items-center gap-2 text-base text-foreground">
                 <Info className="size-4 text-primary" />
                 <span className="truncate">{entityName}</span>
-                <Badge variant="outline" className="border-[#b8d6ef] text-primary">
+                <Badge
+                  variant="outline"
+                  className="border-[#b8d6ef] text-primary"
+                >
                   {entityType}
                 </Badge>
               </DialogTitle>
@@ -312,14 +347,17 @@ export function TablePropertiesDialog({
           </div>
         </DialogHeader>
 
-        {/* Loading */}
+        {/* Loading state */}
         {isLoading ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full min-w-[800px]">
               <TableHeader>
                 <TableRow className="border-b border-border bg-accent">
                   {Array.from({ length: SKELETON_COLUMNS }).map((_, j) => (
-                    <TableHead key={j} className="h-8 text-xs font-semibold text-foreground bg-accent">
+                    <TableHead
+                      key={j}
+                      className="h-8 text-xs font-semibold text-foreground bg-accent"
+                    >
                       <div className="h-3 w-12 animate-pulse rounded bg-muted" />
                     </TableHead>
                   ))}
@@ -332,7 +370,9 @@ export function TablePropertiesDialog({
                       <TableCell key={j} className="py-1.5">
                         <div
                           className="h-3 animate-pulse rounded bg-accent"
-                          style={{ width: `${j === 0 ? 20 : j === 1 ? 24 : 50 + Math.floor(Math.random() * 80)}px` }}
+                          style={{
+                            width: `${j === 0 ? 20 : j === 1 ? 24 : 50 + Math.floor(Math.random() * 80)}px`,
+                          }}
                         />
                       </TableCell>
                     ))}
@@ -342,20 +382,32 @@ export function TablePropertiesDialog({
             </table>
           </div>
         ) : error ? (
-          /* Error */
+          /* Error state */
           <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive max-w-md text-center">
               {error}
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
               Close
             </Button>
           </div>
         ) : fields.length === 0 ? (
-          /* Empty */
+          /* Empty state */
           <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
-            <div className="text-sm">No field metadata available for {entityName}.</div>
-            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <div className="text-sm">
+              No field metadata available for {entityName}.
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
               Close
             </Button>
           </div>
@@ -402,7 +454,9 @@ export function TablePropertiesDialog({
                   >
                     {SORT_LABELS[key]}
                     {sortKey === key ? (
-                      <ArrowUpDown className={`ml-1 size-3 ${sortDir === "desc" ? "rotate-180" : ""}`} />
+                      <ArrowUpDown
+                        className={`ml-1 size-3 ${sortDir === "desc" ? "rotate-180" : ""}`}
+                      />
                     ) : null}
                   </Button>
                 ))}
@@ -423,7 +477,9 @@ export function TablePropertiesDialog({
                           : "border-muted-foreground/40"
                     }`}
                   >
-                    {allSelected ? <Check className="size-2.5 text-primary-foreground" /> : null}
+                    {allSelected ? (
+                      <Check className="size-2.5 text-primary-foreground" />
+                    ) : null}
                   </div>
                   {allSelected ? "Clear all" : "Select all"}
                 </button>
@@ -473,34 +529,243 @@ export function TablePropertiesDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {groups.map((group) => {
-                    const isStructGroup =
-                      group.originType === "INCLUDE" || group.originType === "APPEND";
-                    const isCollapsed = !isSearching && collapsedGroups.has(group.key);
-                    const showFields = !isStructGroup || !isCollapsed;
+                  {/* DIRECT và CALCULATED fields */}
+                  {directFields.map((field, idx) => {
+                    const fieldName = field.FieldName ?? "";
+                    const isKey = normalizeBoolean(field.IsKey);
+                    const position = normalizeNumber(field.Position, idx);
+                    const length = normalizeNumber(field.Length);
+                    const decimals = normalizeNumber(field.Decimals);
+                    const originType = field.OriginType || "DIRECT";
+                    const originBadge =
+                      ORIGIN_BADGE_CLASS[originType] ??
+                      ORIGIN_BADGE_CLASS.DIRECT;
+                    const isSelected = selectedFields.has(fieldName);
 
                     return (
-                      <FieldGroupRows
-                        key={group.key}
-                        group={group}
-                        isStructGroup={isStructGroup}
-                        isCollapsed={isCollapsed}
-                        showFields={showFields}
-                        selectedFields={selectedFields}
-                        isSearching={isSearching}
-                        searchQuery={searchQuery}
-                        onToggleField={toggleField}
-                        onToggleCollapse={() => toggleGroupCollapse(group.key)}
-                      />
+                      <TableRow
+                        key={`direct-${fieldName}-${position}`}
+                        className={
+                          isKey
+                            ? "border-b border-border bg-accent/30 hover:bg-accent/50"
+                            : "border-b border-transparent hover:bg-accent/40"
+                        }
+                      >
+                        <TableCell
+                          className="py-1.5 cursor-pointer"
+                          onClick={() => fieldName && toggleField(fieldName)}
+                        >
+                          <div
+                            className={`flex size-3.5 items-center justify-center rounded-sm border ${
+                              isSelected
+                                ? "border-primary bg-primary"
+                                : "border-muted-foreground/40"
+                            }`}
+                          >
+                            {isSelected && (
+                              <Check className="size-2.5 text-primary-foreground" />
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-1.5 pr-0 text-xs tabular-nums text-muted-foreground">
+                          {position}
+                        </TableCell>
+                        <TableCell className="py-1.5 font-medium text-xs text-foreground">
+                          {searchQuery
+                            ? highlightMatch(fieldName || "-", searchQuery)
+                            : fieldName || "-"}
+                        </TableCell>
+                        <TableCell className="py-1.5 font-mono text-xs text-foreground">
+                          {field.AbapType || "-"}
+                        </TableCell>
+                        <TableCell className="py-1.5 text-right text-xs tabular-nums text-muted-foreground">
+                          {length > 0 ? length : "-"}
+                        </TableCell>
+                        <TableCell className="py-1.5 text-right text-xs tabular-nums text-muted-foreground">
+                          {decimals > 0 ? decimals : "-"}
+                        </TableCell>
+                        <TableCell className="py-1.5 text-center">
+                          {isKey && (
+                            <Badge
+                              variant="outline"
+                              className="border-primary px-1.5 py-px text-[10px] text-primary"
+                            >
+                              KEY
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-1.5">
+                          <Badge
+                            variant="outline"
+                            className={`px-1.5 py-px text-[10px] ${originBadge}`}
+                          >
+                            {originType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell
+                          className="py-1.5 text-xs text-muted-foreground max-w-[160px] truncate"
+                          title={field.Label}
+                        >
+                          {searchQuery && field.Label
+                            ? highlightMatch(field.Label, searchQuery)
+                            : field.Label || "-"}
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                  {groups.length === 0 ? (
+
+                  {/* Groups (INCLUDE / APPEND) */}
+                  {groups.map((group) => {
+                    const isCollapsed = collapsedGroups.has(group.key);
+
+                    return (
+                      <Fragment key={group.key}>
+                        {/* Group header */}
+                        <TableRow
+                          className="border-b border-border bg-accent/20 hover:bg-accent/40 cursor-pointer"
+                          onClick={() => toggleGroupCollapse(group.key)}
+                        >
+                          <TableCell className="py-1.5 pl-2">
+                            {isCollapsed ? (
+                              <ChevronRight className="size-3.5 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="size-3.5 text-muted-foreground" />
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className="py-1.5 text-xs text-muted-foreground"
+                            colSpan={8}
+                          >
+                            <span className="font-semibold text-foreground">
+                              {group.label}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={`ml-2 px-1.5 py-px text-[10px] ${
+                                ORIGIN_BADGE_CLASS[group.originType] ??
+                                ORIGIN_BADGE_CLASS.DIRECT
+                              }`}
+                            >
+                              {group.originType}
+                            </Badge>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {group.fields.length} field
+                              {group.fields.length !== 1 ? "s" : ""}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Group fields (collapsed/expanded) */}
+                        {!isCollapsed &&
+                          group.fields.map((field, idx) => {
+                            const fieldName = field.FieldName ?? "";
+                            const isKey = normalizeBoolean(field.IsKey);
+                            const position = normalizeNumber(
+                              field.Position,
+                              idx,
+                            );
+                            const length = normalizeNumber(field.Length);
+                            const decimals = normalizeNumber(field.Decimals);
+                            const originType = field.OriginType || "DIRECT";
+                            const originBadge =
+                              ORIGIN_BADGE_CLASS[originType] ??
+                              ORIGIN_BADGE_CLASS.DIRECT;
+                            const isSelected = selectedFields.has(fieldName);
+                            const indent = group.depth;
+
+                            return (
+                              <TableRow
+                                key={`group-field-${fieldName}-${position}`}
+                                className={
+                                  isKey
+                                    ? "border-b border-border bg-accent/30 hover:bg-accent/50"
+                                    : "border-b border-transparent hover:bg-accent/40"
+                                }
+                              >
+                                <TableCell
+                                  className="py-1.5 cursor-pointer"
+                                  style={{
+                                    paddingLeft: `${8 + indent * 16}px`,
+                                  }}
+                                  onClick={() =>
+                                    fieldName && toggleField(fieldName)
+                                  }
+                                >
+                                  <div
+                                    className={`flex size-3.5 items-center justify-center rounded-sm border ${
+                                      isSelected
+                                        ? "border-primary bg-primary"
+                                        : "border-muted-foreground/40"
+                                    }`}
+                                  >
+                                    {isSelected && (
+                                      <Check className="size-2.5 text-primary-foreground" />
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-1.5 pr-0 text-xs tabular-nums text-muted-foreground">
+                                  {position}
+                                </TableCell>
+                                <TableCell className="py-1.5 font-medium text-xs text-foreground">
+                                  {searchQuery
+                                    ? highlightMatch(
+                                        fieldName || "-",
+                                        searchQuery,
+                                      )
+                                    : fieldName || "-"}
+                                </TableCell>
+                                <TableCell className="py-1.5 font-mono text-xs text-foreground">
+                                  {field.AbapType || "-"}
+                                </TableCell>
+                                <TableCell className="py-1.5 text-right text-xs tabular-nums text-muted-foreground">
+                                  {length > 0 ? length : "-"}
+                                </TableCell>
+                                <TableCell className="py-1.5 text-right text-xs tabular-nums text-muted-foreground">
+                                  {decimals > 0 ? decimals : "-"}
+                                </TableCell>
+                                <TableCell className="py-1.5 text-center">
+                                  {isKey && (
+                                    <Badge
+                                      variant="outline"
+                                      className="border-primary px-1.5 py-px text-[10px] text-primary"
+                                    >
+                                      KEY
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-1.5">
+                                  <Badge
+                                    variant="outline"
+                                    className={`px-1.5 py-px text-[10px] ${originBadge}`}
+                                  >
+                                    {originType}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell
+                                  className="py-1.5 text-xs text-muted-foreground max-w-[160px] truncate"
+                                  title={field.Label}
+                                >
+                                  {searchQuery && field.Label
+                                    ? highlightMatch(field.Label, searchQuery)
+                                    : field.Label || "-"}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                      </Fragment>
+                    );
+                  })}
+
+                  {directFields.length === 0 && groups.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                      <TableCell
+                        colSpan={9}
+                        className="py-8 text-center text-sm text-muted-foreground"
+                      >
                         No fields match search &quot;{searchQuery}&quot;.
                       </TableCell>
                     </TableRow>
-                  ) : null}
+                  )}
                 </TableBody>
               </table>
             </div>
@@ -513,25 +778,34 @@ export function TablePropertiesDialog({
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>
                 <span className="font-semibold text-foreground">
-                  {isSearching ? filteredCount : totalFields}
+                  {isSearching
+                    ? directFields.length +
+                      groups.reduce((sum, g) => sum + g.fields.length, 0)
+                    : totalFields}
                 </span>
                 {isSearching ? (
                   <>
-                    {" "}of{" "}
-                    <span className="font-semibold text-foreground">{totalFields}</span>
+                    {" "}
+                    of{" "}
+                    <span className="font-semibold text-foreground">
+                      {totalFields}
+                    </span>
                   </>
-                ) : null}
-                {" "}field{totalFields !== 1 ? "s" : ""}
+                ) : null}{" "}
+                field{totalFields !== 1 ? "s" : ""}
               </span>
               {!isSearching && keyFieldCount > 0 ? (
                 <span>
-                  <span className="font-semibold text-foreground">{keyFieldCount}</span>
-                  {" "}key field{keyFieldCount !== 1 ? "s" : ""}
+                  <span className="font-semibold text-foreground">
+                    {keyFieldCount}
+                  </span>{" "}
+                  key field{keyFieldCount !== 1 ? "s" : ""}
                 </span>
               ) : null}
               {selectedCount > 0 ? (
                 <span className="text-primary">
-                  <span className="font-semibold">{selectedCount}</span> selected
+                  <span className="font-semibold">{selectedCount}</span>{" "}
+                  selected
                 </span>
               ) : null}
             </div>
@@ -548,176 +822,5 @@ export function TablePropertiesDialog({
         ) : null}
       </DialogContent>
     </Dialog>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Field Group Rows sub-component                                      */
-/* ------------------------------------------------------------------ */
-
-type FieldGroupRowsProps = {
-  group: FieldGroup;
-  isStructGroup: boolean;
-  isCollapsed: boolean;
-  showFields: boolean;
-  selectedFields: Set<string>;
-  isSearching: boolean;
-  searchQuery: string;
-  onToggleField: (fieldName: string) => void;
-  onToggleCollapse: () => void;
-};
-
-function highlightMatch(text: string, query: string) {
-  if (!query || !text) return text;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx < 0) return text;
-
-  const before = text.slice(0, idx);
-  const match = text.slice(idx, idx + query.length);
-  const after = text.slice(idx + query.length);
-
-  return (
-    <>
-      {before}
-      <mark className="bg-amber-100 text-amber-900 rounded-sm px-px">{match}</mark>
-      {after}
-    </>
-  );
-}
-
-function FieldGroupRows({
-  group,
-  isStructGroup,
-  isCollapsed,
-  showFields,
-  selectedFields,
-  isSearching,
-  searchQuery,
-  onToggleField,
-  onToggleCollapse,
-}: FieldGroupRowsProps) {
-  return (
-    <>
-      {isStructGroup ? (
-        <TableRow
-          className={`border-b border-border bg-accent/20 hover:bg-accent/40 ${isSearching ? "" : "cursor-pointer"}`}
-          onClick={() => {
-            if (!isSearching) onToggleCollapse();
-          }}
-        >
-          <TableCell className="py-1.5 pl-2">
-            {isSearching ? (
-              <Search className="size-3.5 text-muted-foreground" />
-            ) : isCollapsed ? (
-              <ChevronRight className="size-3.5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            )}
-          </TableCell>
-          <TableCell className="py-1.5 text-xs text-muted-foreground" colSpan={8}>
-            <span className="font-semibold text-foreground">{group.label}</span>
-            <Badge
-              variant="outline"
-              className={`ml-2 px-1.5 py-px text-[10px] ${ORIGIN_BADGE_CLASS[group.originType] ?? ORIGIN_BADGE_CLASS.DIRECT}`}
-            >
-              {group.originType}
-            </Badge>
-            <span className="ml-2 text-xs text-muted-foreground">
-              {group.fields.length} field{group.fields.length !== 1 ? "s" : ""}
-              {isSearching ? " (search expanded)" : isCollapsed ? " (collapsed)" : ""}
-            </span>
-          </TableCell>
-        </TableRow>
-      ) : null}
-
-      {showFields
-        ? group.fields.map((field, idx) => {
-            const fieldName = field.FieldName ?? "";
-            const isKey = normalizeBoolean(field.IsKey);
-            const position = normalizeNumber(field.Position, idx);
-            const length = normalizeNumber(field.Length);
-            const decimals = normalizeNumber(field.Decimals);
-            const originType = field.OriginType || "DIRECT";
-            const originBadge =
-              ORIGIN_BADGE_CLASS[originType] ?? ORIGIN_BADGE_CLASS.DIRECT;
-            const isSelected = selectedFields.has(fieldName);
-            const indent = isStructGroup ? group.depth : 0;
-
-            return (
-              <TableRow
-                key={`${fieldName}-${position}`}
-                className={
-                  isKey
-                    ? "border-b border-border bg-accent/30 hover:bg-accent/50"
-                    : "border-b border-transparent hover:bg-accent/40"
-                }
-              >
-                <TableCell
-                  className="py-1.5 cursor-pointer"
-                  style={{ paddingLeft: `${8 + indent * 16}px` }}
-                  onClick={() => {
-                    if (fieldName) onToggleField(fieldName);
-                  }}
-                >
-                  <div
-                    className={`flex size-3.5 items-center justify-center rounded-sm border ${
-                      isSelected
-                        ? "border-primary bg-primary"
-                        : "border-muted-foreground/40"
-                    }`}
-                  >
-                    {isSelected ? (
-                      <Check className="size-2.5 text-primary-foreground" />
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell className="py-1.5 pr-0 text-xs tabular-nums text-muted-foreground">
-                  {position}
-                </TableCell>
-                <TableCell className="py-1.5 font-medium text-xs text-foreground">
-                  <span title={`${field.JsonKey || ""} / ${field.Element || ""}`}>
-                    {searchQuery ? highlightMatch(fieldName || "-", searchQuery) : (fieldName || "-")}
-                  </span>
-                </TableCell>
-                <TableCell className="py-1.5 font-mono text-xs text-foreground">
-                  {field.AbapType || "-"}
-                </TableCell>
-                <TableCell className="py-1.5 text-right text-xs tabular-nums text-muted-foreground">
-                  {length > 0 ? length : "-"}
-                </TableCell>
-                <TableCell className="py-1.5 text-right text-xs tabular-nums text-muted-foreground">
-                  {decimals > 0 ? decimals : "-"}
-                </TableCell>
-                <TableCell className="py-1.5 text-center">
-                  {isKey ? (
-                    <Badge
-                      variant="outline"
-                      className="border-primary px-1.5 py-px text-[10px] text-primary"
-                    >
-                      KEY
-                    </Badge>
-                  ) : null}
-                </TableCell>
-                <TableCell className="py-1.5">
-                  <Badge
-                    variant="outline"
-                    className={`px-1.5 py-px text-[10px] ${originBadge}`}
-                  >
-                    {originType}
-                  </Badge>
-                </TableCell>
-                <TableCell
-                  className="py-1.5 text-xs text-muted-foreground max-w-[160px] truncate"
-                  title={field.Label}
-                >
-                  {searchQuery && field.Label
-                    ? highlightMatch(field.Label, searchQuery)
-                    : (field.Label || "-")}
-                </TableCell>
-              </TableRow>
-            );
-          })
-        : null}
-    </>
   );
 }
