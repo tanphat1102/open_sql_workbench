@@ -21,7 +21,7 @@ export type BuilderJoin = {
   id: string;
   leftNodeId: string;
   rightNodeId: string;
-  joinType: "INNER JOIN" | "LEFT OUTER JOIN" | "RIGHT OUTER JOIN";
+  joinType: "INNER JOIN" | "LEFT JOIN" | "LEFT OUTER JOIN" | "RIGHT OUTER JOIN";
   leftField: string;
   rightField: string;
 };
