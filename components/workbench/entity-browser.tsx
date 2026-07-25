@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -18,7 +18,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Eye, LoaderCircle, Search, TableProperties, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Eye,
+  LoaderCircle,
+  Search,
+  TableProperties,
+  X,
+} from "lucide-react";
 import { parseSapDate } from "@/lib/sapParser";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEntity } from "@/types/workbench";
@@ -56,18 +64,29 @@ export function EntityBrowser({
   onClose,
 }: EntityBrowserProps) {
   const [search, setSearch] = useState("");
+  const [sortAsc, setSortAsc] = useState(true); // true = A→Z, false = Z→A
+
+  // Sắp xếp entities theo tên trước khi lọc
+  const sortedEntities = useMemo(
+    () =>
+      [...entities].sort(
+        (a, b) => a.name.localeCompare(b.name) * (sortAsc ? 1 : -1),
+      ),
+    [entities, sortAsc],
+  );
+
   const selectedEntity =
-    entities.find((entity) => entity.name === selectedEntityName) ??
-    entities[0];
+    sortedEntities.find((entity) => entity.name === selectedEntityName) ??
+    sortedEntities[0];
   const selectedEntityType = selectedEntity?.tags[1] ?? "Object";
 
   const filteredEntities = search
-    ? entities.filter(
+    ? sortedEntities.filter(
         (e) =>
           e.name.toLowerCase().includes(search.toLowerCase()) ||
           e.description?.toLowerCase().includes(search.toLowerCase()),
       )
-    : entities;
+    : sortedEntities;
 
   function highlightMatch(text: string, query: string) {
     if (!query) return text;
@@ -87,49 +106,69 @@ export function EntityBrowser({
   return (
     <TooltipProvider>
       <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
-      <CardHeader className="border-b border-border px-3 py-2">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base text-foreground">
-              Object Explorer
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Entity sets and key fields
-            </CardDescription>
+        <CardHeader className="border-b border-border px-3 py-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base text-foreground">
+                Object Explorer
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Entity sets and key fields
+              </CardDescription>
+            </div>
+            {onClose ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
+                    aria-label="Hide Object Explorer"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Hide Object Explorer</TooltipContent>
+              </Tooltip>
+            ) : null}
           </div>
-          {onClose ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-accent hover:text-primary"
-                  aria-label="Hide Object Explorer"
-                >
-                  <X className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Hide Object Explorer</TooltipContent>
-            </Tooltip>
-          ) : null}
+        </CardHeader>
+
+        <div className="relative border-b border-border px-3 py-2">
+          <Search className="absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search entities..."
+            className="h-7 pl-7 pr-8 text-xs"
+          />
+          {/* Nút đảo chiều sắp xếp */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => setSortAsc(!sortAsc)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-primary"
+                aria-label={sortAsc ? "Sort Z→A" : "Sort A→Z"}
+              >
+                {sortAsc ? (
+                  <ArrowUp className="size-3.5" />
+                ) : (
+                  <ArrowDown className="size-3.5" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {sortAsc ? "Sort descending (Z→A)" : "Sort ascending (A→Z)"}
+            </TooltipContent>
+          </Tooltip>
         </div>
-      </CardHeader>
 
-      <div className="relative border-b border-border px-3 py-2">
-        <Search className="absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search entities..."
-          className="h-7 pl-7 text-xs"
-        />
-      </div>
-
-      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-1 p-2">
-            {isLoading
-              ? Array.from({ length: 10 }).map((_, i) => (
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="space-y-1 p-2">
+              {isLoading ? (
+                Array.from({ length: 10 }).map((_, i) => (
                   <div
                     key={i}
                     className="flex min-h-11 items-center gap-2 rounded-md border border-transparent px-2 py-1.5"
@@ -141,11 +180,12 @@ export function EntityBrowser({
                     <div className="h-7 w-16 animate-pulse rounded-md bg-accent" />
                   </div>
                 ))
-              : filteredEntities.length === 0 ? (
-                  <div className="px-2 py-8 text-center text-xs text-muted-foreground">
-                    {search ? "No matching entities." : "No entities available."}
-                  </div>
-                ) : filteredEntities.map((entity) => {
+              ) : filteredEntities.length === 0 ? (
+                <div className="px-2 py-8 text-center text-xs text-muted-foreground">
+                  {search ? "No matching entities." : "No entities available."}
+                </div>
+              ) : (
+                filteredEntities.map((entity) => {
                   const isSelected = entity.name === selectedEntityName;
 
                   return (
@@ -208,75 +248,79 @@ export function EntityBrowser({
                       ) : null}
                     </div>
                   );
-                })}
-          </div>
-        </ScrollArea>
-
-        <Separator className="bg-border" />
-
-        {isLoading ? (
-          <div className="space-y-3 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex-1">
-                <div className="h-3 w-20 animate-pulse rounded bg-accent" />
-                <div className="mt-1 h-4 w-32 animate-pulse rounded bg-accent" />
-              </div>
-              <div className="h-5 w-20 animate-pulse rounded-full bg-accent" />
+                })
+              )}
             </div>
-            <div className="space-y-2">
-              <div className="h-3 w-3/4 animate-pulse rounded bg-accent" />
-              <div className="h-3 w-1/2 animate-pulse rounded bg-accent" />
-            </div>
-            <div className="h-8 w-full animate-pulse rounded-md bg-accent" />
-          </div>
-        ) : selectedEntity ? (
-          <div className="space-y-3 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs uppercase tracking-[0.12em] text-primary">
-                  Selected entity
+          </ScrollArea>
+
+          <Separator className="bg-border" />
+
+          {isLoading ? (
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <div className="h-3 w-20 animate-pulse rounded bg-accent" />
+                  <div className="mt-1 h-4 w-32 animate-pulse rounded bg-accent" />
                 </div>
-                <div className="mt-1 truncate font-medium text-foreground">
-                  {selectedEntity.name}
+                <div className="h-5 w-20 animate-pulse rounded-full bg-accent" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 w-3/4 animate-pulse rounded bg-accent" />
+                <div className="h-3 w-1/2 animate-pulse rounded bg-accent" />
+              </div>
+              <div className="h-8 w-full animate-pulse rounded-md bg-accent" />
+            </div>
+          ) : selectedEntity ? (
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.12em] text-primary">
+                    Selected entity
+                  </div>
+                  <div className="mt-1 truncate font-medium text-foreground">
+                    {selectedEntity.name}
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="border-[#b8d6ef] text-primary"
+                >
+                  {selectedEntity.keyFields.length > 0
+                    ? `${selectedEntity.keyFields.length} key fields`
+                    : selectedEntityType}
+                </Badge>
+              </div>
+
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <div>
+                  {selectedEntity.keyFields.length > 0 ? (
+                    <>
+                      <span className="text-muted-foreground">Keys: </span>
+                      {selectedEntity.keyFields.join(", ")}
+                    </>
+                  ) : (
+                    selectedEntity.description
+                  )}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Last sync: </span>
+                  {formatSapDate(selectedEntity.lastSyncedRaw)}
                 </div>
               </div>
-              <Badge variant="outline" className="border-[#b8d6ef] text-primary">
-                {selectedEntity.keyFields.length > 0
-                  ? `${selectedEntity.keyFields.length} key fields`
-                  : selectedEntityType}
-              </Badge>
-            </div>
 
-            <div className="space-y-2 text-xs text-muted-foreground">
-              <div>
-                {selectedEntity.keyFields.length > 0 ? (
-                  <>
-                    <span className="text-muted-foreground">Keys: </span>
-                    {selectedEntity.keyFields.join(", ")}
-                  </>
-                ) : (
-                  selectedEntity.description
-                )}
-              </div>
-              <div>
-                <span className="text-muted-foreground">Last sync: </span>
-                {formatSapDate(selectedEntity.lastSyncedRaw)}
-              </div>
+              {onShowProperties ? (
+                <button
+                  type="button"
+                  onClick={() => onShowProperties(selectedEntity.name)}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-accent hover:border-[#b8d6ef]"
+                >
+                  <TableProperties className="size-3.5" />
+                  View Fields
+                </button>
+              ) : null}
             </div>
-
-            {onShowProperties ? (
-              <button
-                type="button"
-                onClick={() => onShowProperties(selectedEntity.name)}
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-accent hover:border-[#b8d6ef]"
-              >
-                <TableProperties className="size-3.5" />
-                View Fields
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-      </CardContent>
+          ) : null}
+        </CardContent>
       </Card>
     </TooltipProvider>
   );
