@@ -14,22 +14,16 @@ export default function Home() {
                 SAP Query Workbench
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Sign in to continue.
+                Login to access the workbench.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Link
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                className="rounded-md bg-primary px-8 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
                 href="/login"
               >
-                Sign in
-              </Link>
-              <Link
-                className="rounded-md border border-[#b8d6ef] bg-white px-4 py-2 text-sm font-medium text-primary transition hover:bg-accent"
-                href="/workbench"
-              >
-                Open workbench
+                Login
               </Link>
             </div>
           </div>

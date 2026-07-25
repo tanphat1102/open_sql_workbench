@@ -54,7 +54,7 @@ export default function LoginPage() {
               Open SQL Workbench
             </p>
             <h1 className="mt-3 text-2xl font-semibold text-foreground">
-              Sign in
+              Login
             </h1>
           </div>
 
@@ -141,7 +141,7 @@ export default function LoginPage() {
               className="h-12 w-full rounded-md bg-primary text-base font-semibold text-primary-foreground transition hover:bg-primary/90"
             >
               <span className="inline-flex items-center gap-2">
-                {loading ? "Signing in..." : "Sign in"}
+                {loading ? "Logging in..." : "Login"}
                 <ArrowRight className="size-4" />
               </span>
             </Button>
