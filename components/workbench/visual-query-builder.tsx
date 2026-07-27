@@ -58,7 +58,6 @@ const preferredJoinFields = new Set([
 ]);
 const blockedJoinFields = new Set(["MANDT"]);
 
-
 function getAlias(index: number) {
   return String.fromCharCode("a".charCodeAt(0) + index);
 }
@@ -324,9 +323,7 @@ function buildGroupByClause(nodes: BuilderNode[]) {
   const fields = nodes.flatMap((node) =>
     node.groupBy
       .filter((f) => f.trim())
-      .map((field) =>
-        field.includes("~") ? field : `${node.alias}~${field}`,
-      ),
+      .map((field) => (field.includes("~") ? field : `${node.alias}~${field}`)),
   );
 
   return fields.length > 0 ? `GROUP BY ${fields.join(", ")}` : "";
@@ -525,8 +522,12 @@ export function VisualQueryBuilder({
   const [nodes, setNodes] = useState<BuilderNode[]>([]);
   const [joins, setJoins] = useState<BuilderJoin[]>([]);
   const [filters, setFilters] = useState<BuilderFilter[]>([]);
-  const [fieldPickerNodeId, setFieldPickerNodeId] = useState<string | null>(null);
-  const fieldPickerCallbackRef = useRef<((fieldNames: string[]) => void) | null>(null);
+  const [fieldPickerNodeId, setFieldPickerNodeId] = useState<string | null>(
+    null,
+  );
+  const fieldPickerCallbackRef = useRef<
+    ((fieldNames: string[]) => void) | null
+  >(null);
   // Fetch fields for all active nodes via TanStack Query (cached per entity)
   const entityFieldQueries = useQueries({
     queries: nodes.map((node) => ({
@@ -585,47 +586,87 @@ export function VisualQueryBuilder({
 
   // ponytail: fields auto-loaded by useQueries above, no manual ensureFields needed
 
-  function addNode(entityName: string, x?: number, y?: number) {
-    if (nodes.some((node) => node.entityName === entityName)) {
+  function addNodes(entityNames: string[]) {
+    const validNames = entityNames.filter(
+      (name) => !nodes.some((node) => node.entityName === name),
+    );
+
+    if (validNames.length === 0) {
       return;
     }
 
-    const position =
-      typeof x === "number" && typeof y === "number"
-        ? { x, y }
-        : centerPosition(nodes.length);
-    const nextNode: BuilderNode = {
-      id: `${entityName}-${Date.now()}`,
-      entityName,
-      alias: getNextAlias(nodes),
-      fields: "",
-      orderBy: [],
-      groupBy: [],
-      x: position.x,
-      y: position.y,
-    };
-    const nextNodes = [...nodes, nextNode];
+    // Limit to 5 tables
+    const namesToAdd = validNames.slice(0, 5);
 
-    setNodes(nextNodes);
+    const newNodes: BuilderNode[] = [];
+    const newJoins: BuilderJoin[] = [];
 
-    if (nodes.length > 0) {
-      const leftNode = nodes[nodes.length - 1];
-      const suggestion = findJoinSuggestion(leftNode, nextNode, fieldsByEntity);
+    // Get existing nodes for alias calculation
+    const allExistingNodes = nodes;
+
+    namesToAdd.forEach((entityName, index) => {
+      const position = centerPosition(allExistingNodes.length + index);
+      const nextNode: BuilderNode = {
+        id: `${entityName}-${Date.now()}-${index}`,
+        entityName,
+        alias: getNextAlias([...allExistingNodes, ...newNodes]),
+        fields: "",
+        orderBy: [],
+        groupBy: [],
+        x: position.x,
+        y: position.y,
+      };
+      newNodes.push(nextNode);
+    });
+
+    // Auto-join between new nodes (sequential)
+    for (let i = 0; i < newNodes.length - 1; i++) {
+      const leftNode = newNodes[i];
+      const rightNode = newNodes[i + 1];
+
+      const suggestion = findJoinSuggestion(
+        leftNode,
+        rightNode,
+        fieldsByEntity,
+      );
 
       if (suggestion) {
-        setJoins((currentJoins) => [
-          ...currentJoins,
-          {
-            id: `join-${Date.now()}`,
-            leftNodeId: leftNode.id,
-            rightNodeId: nextNode.id,
-            joinType: "INNER JOIN",
-            leftField: suggestion?.leftField ?? "",
-            rightField: suggestion?.rightField ?? "",
-          },
-        ]);
+        newJoins.push({
+          id: `join-${Date.now()}-${i}`,
+          leftNodeId: leftNode.id,
+          rightNodeId: rightNode.id,
+          joinType: "INNER JOIN",
+          leftField: suggestion.leftField,
+          rightField: suggestion.rightField,
+        });
       }
     }
+
+    // Also try to join the last existing node to the first new node
+    if (allExistingNodes.length > 0 && newNodes.length > 0) {
+      const lastExistingNode = allExistingNodes[allExistingNodes.length - 1];
+      const firstNewNode = newNodes[0];
+      const suggestion = findJoinSuggestion(
+        lastExistingNode,
+        firstNewNode,
+        fieldsByEntity,
+      );
+
+      if (suggestion) {
+        newJoins.push({
+          id: `join-${Date.now()}-existing-new`,
+          leftNodeId: lastExistingNode.id,
+          rightNodeId: firstNewNode.id,
+          joinType: "INNER JOIN",
+          leftField: suggestion.leftField,
+          rightField: suggestion.rightField,
+        });
+      }
+    }
+
+    // Update state
+    setNodes((currentNodes) => [...currentNodes, ...newNodes]);
+    setJoins((currentJoins) => [...currentJoins, ...newJoins]);
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -638,12 +679,7 @@ export function VisualQueryBuilder({
       return;
     }
 
-    const bounds = event.currentTarget.getBoundingClientRect();
-    addNode(
-      entityName,
-      Math.max(12, event.clientX - bounds.left - nodeWidth / 2),
-      Math.max(12, event.clientY - bounds.top - 24),
-    );
+    addNodes([entityName]);
   }
 
   function updateNode(nodeId: string, patch: Partial<BuilderNode>) {
@@ -966,7 +1002,11 @@ export function VisualQueryBuilder({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <AddEntityDialog entities={entities} excludedNames={nodes.map((n) => n.entityName)} onSelect={(name) => addNode(name)} />
+          <AddEntityDialog
+            entities={entities}
+            excludedNames={nodes.map((n) => n.entityName)}
+            onSelect={(names) => addNodes(names)}
+          />
           <Button
             type="button"
             variant="outline"
@@ -1014,7 +1054,9 @@ export function VisualQueryBuilder({
                 </marker>
               </defs>
               {joinConnectors.map(({ join, geometry }) => {
-                const isLeftJoin = join.joinType === "LEFT OUTER JOIN" || join.joinType === "LEFT JOIN";
+                const isLeftJoin =
+                  join.joinType === "LEFT OUTER JOIN" ||
+                  join.joinType === "LEFT JOIN";
                 const isRightJoin = join.joinType === "RIGHT OUTER JOIN";
                 const isOuter = isLeftJoin || isRightJoin;
 
@@ -1192,7 +1234,8 @@ export function VisualQueryBuilder({
                 </Button>
               </div>
 
-              {filters.filter((f) => (f.clause ?? "WHERE") === "WHERE").length === 0 ? (
+              {filters.filter((f) => (f.clause ?? "WHERE") === "WHERE")
+                .length === 0 ? (
                 <div className="rounded-md border border-dashed border-border bg-white p-3 text-xs text-muted-foreground">
                   No WHERE filters
                 </div>
@@ -1283,31 +1326,37 @@ export function VisualQueryBuilder({
           </div>
         </aside>
       </div>
-      {fieldPickerNodeId ? (() => {
-        const pickerNode = nodes.find((n) => n.id === fieldPickerNodeId);
-        if (!pickerNode) return null;
-        const entityInfo = entities.find((e) => e.name === pickerNode.entityName);
-        return (
-          <TablePropertiesDialog
-            open
-            onOpenChange={() => {
-              setFieldPickerNodeId(null);
-              fieldPickerCallbackRef.current = null;
-            }}
-            entityName={pickerNode.entityName}
-            entityDescription={entityInfo?.description}
-            selectionMode
-            onPreviewFields={(fieldNames) => {
-              const cb = fieldPickerCallbackRef.current;
-              if (cb) {
-                cb(fieldNames);
-              } else {
-                updateNode(pickerNode.id, { fields: fieldNames.join(", ") });
-              }
-            }}
-          />
-        );
-      })() : null}
+      {fieldPickerNodeId
+        ? (() => {
+            const pickerNode = nodes.find((n) => n.id === fieldPickerNodeId);
+            if (!pickerNode) return null;
+            const entityInfo = entities.find(
+              (e) => e.name === pickerNode.entityName,
+            );
+            return (
+              <TablePropertiesDialog
+                open
+                onOpenChange={() => {
+                  setFieldPickerNodeId(null);
+                  fieldPickerCallbackRef.current = null;
+                }}
+                entityName={pickerNode.entityName}
+                entityDescription={entityInfo?.description}
+                selectionMode
+                onPreviewFields={(fieldNames) => {
+                  const cb = fieldPickerCallbackRef.current;
+                  if (cb) {
+                    cb(fieldNames);
+                  } else {
+                    updateNode(pickerNode.id, {
+                      fields: fieldNames.join(", "),
+                    });
+                  }
+                }}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }
@@ -1319,16 +1368,19 @@ export function VisualQueryBuilder({
 type AddEntityDialogProps = {
   entities: WorkbenchEntity[];
   excludedNames: string[];
-  onSelect: (entityName: string) => void;
+  onSelect: (entityNames: string[]) => void;
 };
 
-function AddEntityDialog({ entities, excludedNames, onSelect }: AddEntityDialogProps) {
+function AddEntityDialog({
+  entities,
+  excludedNames,
+  onSelect,
+}: AddEntityDialogProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
 
-  const available = entities.filter(
-    (e) => !excludedNames.includes(e.name),
-  );
+  const available = entities.filter((e) => !excludedNames.includes(e.name));
 
   const filtered = search
     ? available.filter(
@@ -1337,6 +1389,38 @@ function AddEntityDialog({ entities, excludedNames, onSelect }: AddEntityDialogP
           e.description?.toLowerCase().includes(search.toLowerCase()),
       )
     : available;
+
+  const handleToggleEntity = (entityName: string) => {
+    setSelectedEntities((prev) => {
+      if (prev.includes(entityName)) {
+        return prev.filter((name) => name !== entityName);
+      }
+      if (prev.length >= 5) {
+        toast({
+          title: "Maximum 5 tables",
+          description: "You can only add up to 5 tables at a time.",
+          variant: "destructive",
+        });
+        return prev;
+      }
+      return [...prev, entityName];
+    });
+  };
+
+  const handleAddSelected = () => {
+    if (selectedEntities.length === 0) {
+      toast({
+        title: "No tables selected",
+        description: "Please select at least one table or view.",
+        variant: "destructive",
+      });
+      return;
+    }
+    onSelect(selectedEntities);
+    setOpen(false);
+    setSearch("");
+    setSelectedEntities([]);
+  };
 
   return (
     <>
@@ -1352,7 +1436,9 @@ function AddEntityDialog({ entities, excludedNames, onSelect }: AddEntityDialogP
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm gap-0 p-0" showCloseButton={false}>
           <DialogHeader className="border-b border-border bg-[#f7fbff] px-4 py-3">
-            <DialogTitle className="text-sm">Add table or view</DialogTitle>
+            <DialogTitle className="text-sm">
+              Add tables or views ({selectedEntities.length}/5)
+            </DialogTitle>
           </DialogHeader>
           <div className="relative border-b border-border px-3 py-2">
             <Search className="absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -1371,46 +1457,81 @@ function AddEntityDialog({ entities, excludedNames, onSelect }: AddEntityDialogP
                 {search ? "No matching tables." : "All tables already added."}
               </div>
             ) : (
-              filtered.map((entity) => (
-                <button
-                  key={entity.name}
-                  type="button"
-                  onClick={() => {
-                    onSelect(entity.name);
-                    setOpen(false);
-                    setSearch("");
-                  }}
-                  className="flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition last:border-b-0 hover:bg-accent"
-                >
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded bg-primary/10">
-                    <Table2 className="size-4 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground">
-                      {entity.name}
+              filtered.map((entity) => {
+                const isSelected = selectedEntities.includes(entity.name);
+                const isDisabled = !isSelected && selectedEntities.length >= 5;
+
+                return (
+                  <button
+                    key={entity.name}
+                    type="button"
+                    onClick={() => handleToggleEntity(entity.name)}
+                    disabled={isDisabled}
+                    className={cn(
+                      "flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition last:border-b-0",
+                      isSelected ? "bg-primary/5" : "hover:bg-accent",
+                      isDisabled && "opacity-50 cursor-not-allowed",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded",
+                        isSelected ? "bg-primary text-white" : "bg-primary/10",
+                      )}
+                    >
+                      {isSelected ? (
+                        <span className="text-xs font-medium">✓</span>
+                      ) : (
+                        <Table2 className="size-4 text-primary" />
+                      )}
                     </div>
-                    {entity.description ? (
-                      <div className="truncate text-xs text-muted-foreground">
-                        {entity.description}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-foreground">
+                        {entity.name}
                       </div>
-                    ) : null}
-                  </div>
-                </button>
-              ))
+                      {entity.description ? (
+                        <div className="truncate text-xs text-muted-foreground">
+                          {entity.description}
+                        </div>
+                      ) : null}
+                    </div>
+                    {isSelected && (
+                      <Badge variant="secondary" className="shrink-0">
+                        Selected
+                      </Badge>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
-          <div className="border-t border-border bg-[#f7fbff] px-4 py-2 text-right">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setOpen(false);
-                setSearch("");
-              }}
-            >
-              Cancel
-            </Button>
+          <div className="border-t border-border bg-[#f7fbff] px-4 py-2 flex justify-between items-center">
+            <span className="text-xs text-muted-foreground">
+              {selectedEntities.length} of 5 selected
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setOpen(false);
+                  setSearch("");
+                  setSelectedEntities([]);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleAddSelected}
+                disabled={selectedEntities.length === 0}
+              >
+                Add {selectedEntities.length} object
+                {selectedEntities.length !== 1 ? "s" : ""}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
