@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bookmark, Download, LoaderCircle, Pencil, Play, Search, Trash2 } from "lucide-react";
+import {
+  Bookmark,
+  Download,
+  LoaderCircle,
+  Pencil,
+  Play,
+  Search,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -361,7 +369,7 @@ export function SavedQueriesDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="PRIVATE">Private</SelectItem>
-                    <SelectItem value="SHARED">Shared</SelectItem>
+                    <SelectItem value="PROFILE">Shared</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -484,131 +492,147 @@ export function SavedQueriesDialog({
                     My Queries
                   </div>
                   {myQueries.map((q) => (
-                      <div
-                        key={q.QueryId}
-                        className="flex items-start gap-3 px-4 py-3 transition hover:bg-accent/30"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium text-foreground">
-                              {highlightMatch(q.QueryName || "Unnamed", search)}
-                            </span>
+                    <div
+                      key={q.QueryId}
+                      className="flex items-start gap-3 px-4 py-3 transition hover:bg-accent/30"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {highlightMatch(q.QueryName || "Unnamed", search)}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={
+                              q.Visibility === "PROFILE"
+                                ? "border-sky-200 bg-sky-50 text-sky-700 text-[10px]"
+                                : "border-border text-muted-foreground text-[10px]"
+                            }
+                          >
+                            {q.Visibility === "PROFILE"
+                              ? "YOUR SHARED"
+                              : q.Visibility}
+                          </Badge>
+                          {q.Owner &&
+                          currentUser &&
+                          q.Owner.toUpperCase() ===
+                            currentUser.toUpperCase() ? (
                             <Badge
                               variant="outline"
-                              className={
-                                q.Visibility === "SHARED"
-                                  ? "border-sky-200 bg-sky-50 text-sky-700 text-[10px]"
-                                  : "border-border text-muted-foreground text-[10px]"
-                              }
+                              className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]"
                             >
-                              {q.Visibility || "PRIVATE"}
+                              {q.Owner}
                             </Badge>
-                            {q.Tags?.split(",")
-                              .filter(Boolean)
-                              .map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="text-[10px] text-muted-foreground"
-                                >
-                                  {tag.trim()}
-                                </span>
-                              ))}
-                          </div>
-                          <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                            {q.QueryText || "-"}
-                          </div>
-                          {q.Description ? (
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">
-                              {q.Description}
-                            </div>
                           ) : null}
+                          {q.Tags?.split(",")
+                            .filter(Boolean)
+                            .map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-[10px] text-muted-foreground"
+                              >
+                                {tag.trim()}
+                              </span>
+                            ))}
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            onClick={() =>
-                              q.QueryText && onLoadQuery(q.QueryText)
-                            }
-                            disabled={!q.QueryText}
-                            className="size-7 border-border text-primary hover:bg-accent"
-                            title="Load into editor"
-                          >
-                            <Bookmark className="size-3.5" />
-                          </Button>
-                          {onRunQuery ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon-xs"
-                              onClick={() => {
-                                if (q.QueryText) {
-                                  onLoadQuery(q.QueryText);
-                                  setTimeout(() => onRunQuery(), 100);
-                                }
-                              }}
-                              disabled={!q.QueryText}
-                              className="size-7 border-border text-emerald-600 hover:bg-accent"
-                              title="Load and run"
-                            >
-                              <Play className="size-3.5" />
-                            </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            onClick={() =>
-                              q.QueryText &&
-                              handleDownloadSql(q.QueryName || "query", q.QueryText)
-                            }
-                            disabled={!q.QueryText}
-                            className="size-7 border-border text-primary hover:bg-accent"
-                            title="Download .sql file"
-                          >
-                            <Download className="size-3.5" />
-                          </Button>
+                        <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                          {q.QueryText || "-"}
+                        </div>
+                        {q.Description ? (
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">
+                            {q.Description}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          onClick={() =>
+                            q.QueryText && onLoadQuery(q.QueryText)
+                          }
+                          disabled={!q.QueryText}
+                          className="size-7 border-border text-primary hover:bg-accent"
+                          title="Load into editor"
+                        >
+                          <Bookmark className="size-3.5" />
+                        </Button>
+                        {onRunQuery ? (
                           <Button
                             type="button"
                             variant="outline"
                             size="icon-xs"
                             onClick={() => {
-                              setEditingQueryId(q.QueryId ?? null);
-                              setSaveName(q.QueryName || "");
-                              setSaveQueryText(q.QueryText || "");
-                              setSaveVisibility(q.Visibility || "PRIVATE");
-                              setSaveTags(q.Tags || "");
-                              setSaveDescription(q.Description || "");
-                              setShowSaveForm(true);
+                              if (q.QueryText) {
+                                onLoadQuery(q.QueryText);
+                                setTimeout(() => onRunQuery(), 100);
+                              }
                             }}
-                            className="size-7 border-border text-muted-foreground hover:text-primary"
-                            title="Edit"
+                            disabled={!q.QueryText}
+                            className="size-7 border-border text-emerald-600 hover:bg-accent"
+                            title="Load and run"
                           >
-                            <Pencil className="size-3.5" />
+                            <Play className="size-3.5" />
                           </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            onClick={() =>
-                              q.QueryId && q.QueryName
-                                ? void handleDelete(q.QueryId, q.QueryName)
-                                : null
-                            }
-                            disabled={!q.QueryId || deletingId === q.QueryId}
-                            className="size-7 border-border text-muted-foreground hover:border-destructive/30 hover:text-destructive"
-                            title="Delete"
-                          >
-                            {deletingId === q.QueryId ? (
-                              <LoaderCircle className="size-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="size-3.5" />
-                            )}
-                          </Button>
-                        </div>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          onClick={() =>
+                            q.QueryText &&
+                            handleDownloadSql(
+                              q.QueryName || "query",
+                              q.QueryText,
+                            )
+                          }
+                          disabled={!q.QueryText}
+                          className="size-7 border-border text-primary hover:bg-accent"
+                          title="Download .sql file"
+                        >
+                          <Download className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          onClick={() => {
+                            setEditingQueryId(q.QueryId ?? null);
+                            setSaveName(q.QueryName || "");
+                            setSaveQueryText(q.QueryText || "");
+                            setSaveVisibility(q.Visibility || "PRIVATE");
+                            setSaveTags(q.Tags || "");
+                            setSaveDescription(q.Description || "");
+                            setShowSaveForm(true);
+                          }}
+                          className="size-7 border-border text-muted-foreground hover:text-primary"
+                          title="Edit"
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          onClick={() =>
+                            q.QueryId && q.QueryName
+                              ? void handleDelete(q.QueryId, q.QueryName)
+                              : null
+                          }
+                          disabled={!q.QueryId || deletingId === q.QueryId}
+                          className="size-7 border-border text-muted-foreground hover:border-destructive/30 hover:text-destructive"
+                          title="Delete"
+                        >
+                          {deletingId === q.QueryId ? (
+                            <LoaderCircle className="size-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-3.5" />
+                          )}
+                        </Button>
                       </div>
-                    ))}
+                    </div>
+                  ))}
                 </div>
               ) : null}
               {sharedQueries.length > 0 ? (
@@ -617,91 +641,94 @@ export function SavedQueriesDialog({
                     Shared with me
                   </div>
                   {sharedQueries.map((q) => (
-                      <div
-                        key={q.QueryId}
-                        className="flex items-start gap-3 px-4 py-3 transition hover:bg-accent/30"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium text-foreground">
-                              {highlightMatch(q.QueryName || "Unnamed", search)}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className="border-amber-200 bg-amber-50 text-amber-700 text-[10px]"
-                            >
-                              SHARED
-                            </Badge>
-                            {q.Tags?.split(",")
-                              .filter(Boolean)
-                              .map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="text-[10px] text-muted-foreground"
-                                >
-                                  {tag.trim()}
-                                </span>
-                              ))}
-                          </div>
-                          <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                            {q.QueryText || "-"}
-                          </div>
-                          <div className="mt-0.5 text-[10px] text-muted-foreground">
-                            <span>By {q.Owner}</span>
-                            {q.Description ? (
-                              <span> · {q.Description}</span>
-                            ) : null}
-                          </div>
+                    <div
+                      key={q.QueryId}
+                      className="flex items-start gap-3 px-4 py-3 transition hover:bg-accent/30"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {highlightMatch(q.QueryName || "Unnamed", search)}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-50 text-amber-700 text-[10px]"
+                          >
+                            SHARED
+                          </Badge>
+                          {q.Tags?.split(",")
+                            .filter(Boolean)
+                            .map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-[10px] text-muted-foreground"
+                              >
+                                {tag.trim()}
+                              </span>
+                            ))}
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            onClick={() =>
-                              q.QueryText && onLoadQuery(q.QueryText)
-                            }
-                            disabled={!q.QueryText}
-                            className="size-7 border-border text-primary hover:bg-accent"
-                            title="Load into editor"
-                          >
-                            <Bookmark className="size-3.5" />
-                          </Button>
-                          {onRunQuery ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon-xs"
-                              onClick={() => {
-                                if (q.QueryText) {
-                                  onLoadQuery(q.QueryText);
-                                  setTimeout(() => onRunQuery(), 100);
-                                }
-                              }}
-                              disabled={!q.QueryText}
-                              className="size-7 border-border text-emerald-600 hover:bg-accent"
-                              title="Run with your profile permissions"
-                            >
-                              <Play className="size-3.5" />
-                            </Button>
+                        <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                          {q.QueryText || "-"}
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                          <span>By {q.Owner}</span>
+                          {q.Description ? (
+                            <span> · {q.Description}</span>
                           ) : null}
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            onClick={() =>
-                              q.QueryText &&
-                              handleDownloadSql(q.QueryName || "query", q.QueryText)
-                            }
-                            disabled={!q.QueryText}
-                            className="size-7 border-border text-primary hover:bg-accent"
-                            title="Download .sql file"
-                          >
-                            <Download className="size-3.5" />
-                          </Button>
                         </div>
                       </div>
-                    ))}
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          onClick={() =>
+                            q.QueryText && onLoadQuery(q.QueryText)
+                          }
+                          disabled={!q.QueryText}
+                          className="size-7 border-border text-primary hover:bg-accent"
+                          title="Load into editor"
+                        >
+                          <Bookmark className="size-3.5" />
+                        </Button>
+                        {onRunQuery ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            onClick={() => {
+                              if (q.QueryText) {
+                                onLoadQuery(q.QueryText);
+                                setTimeout(() => onRunQuery(), 100);
+                              }
+                            }}
+                            disabled={!q.QueryText}
+                            className="size-7 border-border text-emerald-600 hover:bg-accent"
+                            title="Run with your profile permissions"
+                          >
+                            <Play className="size-3.5" />
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          onClick={() =>
+                            q.QueryText &&
+                            handleDownloadSql(
+                              q.QueryName || "query",
+                              q.QueryText,
+                            )
+                          }
+                          disabled={!q.QueryText}
+                          className="size-7 border-border text-primary hover:bg-accent"
+                          title="Download .sql file"
+                        >
+                          <Download className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -712,7 +739,9 @@ export function SavedQueriesDialog({
           <div className="flex items-center justify-between border-t border-border bg-[#f7fbff] px-5 py-2">
             <span className="text-xs text-muted-foreground">
               <span className="font-semibold text-foreground">
-                {search ? `${filteredQueries.length} / ${queries.length}` : queries.length}
+                {search
+                  ? `${filteredQueries.length} / ${queries.length}`
+                  : queries.length}
               </span>{" "}
               saved quer{queries.length !== 1 ? "ies" : "y"}
             </span>
