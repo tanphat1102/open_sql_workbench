@@ -64,14 +64,8 @@ const toneStyles: Record<
 };
 
 function getCurrentStatus(activity: WorkbenchActivity[]) {
-  return (
-    activity.find((entry) => entry.tone === "error") ??
-    activity.find((entry) => entry.tone === "warning") ??
-    activity.find((entry) => entry.tone === "success") ??
-    activity.find((entry) => entry.tone === "info")
-  );
+  return activity[0];
 }
-
 export function ActionOutput({ activity, onClose }: ActionOutputProps) {
   const currentStatus = getCurrentStatus(activity);
   const statusTone = currentStatus?.tone ?? "info";
@@ -106,9 +100,7 @@ export function ActionOutput({ activity, onClose }: ActionOutputProps) {
         <ScrollArea className="h-full">
           <div className="divide-y divide-border text-sm text-foreground">
             {activity.length === 0 ? (
-              <div className="p-3 text-muted-foreground">
-                No actions yet.
-              </div>
+              <div className="p-3 text-muted-foreground">No actions yet.</div>
             ) : (
               <div>
                 {activity.map((a) => {
@@ -116,23 +108,25 @@ export function ActionOutput({ activity, onClose }: ActionOutputProps) {
 
                   return (
                     <div key={a.id} className={`p-3 ${style.row}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className={`text-sm font-medium ${style.title}`}>
-                          {a.title}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className={`text-sm font-medium ${style.title}`}>
+                            {a.title}
+                          </div>
+                          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                            {style.label}
+                          </div>
                         </div>
-                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                          {style.label}
+                        <div className="shrink-0 text-xs text-muted-foreground">
+                          {formatSapDate(a.timestampRaw)}
                         </div>
                       </div>
-                      <div className="shrink-0 text-xs text-muted-foreground">
-                        {formatSapDate(a.timestampRaw)}
+                      <div
+                        className={`mt-2 whitespace-pre-wrap font-mono text-xs leading-5 ${style.detail}`}
+                      >
+                        {a.detail}
                       </div>
                     </div>
-                    <div className={`mt-2 whitespace-pre-wrap font-mono text-xs leading-5 ${style.detail}`}>
-                      {a.detail}
-                    </div>
-                  </div>
                   );
                 })}
               </div>
