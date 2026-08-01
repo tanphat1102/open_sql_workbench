@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -83,16 +89,11 @@ export function WorkbenchDashboard() {
 
   const [selectedProfileId, setSelectedProfileId] = useState(() => {
     if (typeof document === "undefined") return "";
-    const match = document.cookie.match(
-      /(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/,
-    );
+    const match = document.cookie.match(/(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/);
     return match?.[1] ?? "";
   });
 
-  const {
-    data: userProfiles = [],
-    isLoading: profilesLoading,
-  } = useQuery({
+  const { data: userProfiles = [], isLoading: profilesLoading } = useQuery({
     queryKey: ["userProfiles"],
     queryFn: () => sqlAssistService.fetchUserProfiles(),
     staleTime: 5 * 60_000,
@@ -100,20 +101,22 @@ export function WorkbenchDashboard() {
 
   function getCurrentProfileId() {
     if (typeof document === "undefined") return "";
-    const match = document.cookie.match(
-      /(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/,
-    );
+    const match = document.cookie.match(/(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/);
     return match?.[1] ?? "";
   }
 
   // Derive profile resolution state from query data + selected profile
-  const singleProfileId = userProfiles.length === 1 ? (userProfiles[0].ProfileId ?? "") : "";
+  const singleProfileId =
+    userProfiles.length === 1 ? (userProfiles[0].ProfileId ?? "") : "";
   const effectiveProfileId = selectedProfileId || singleProfileId;
   const hasValidProfile =
     userProfiles.length === 0 ||
-    (effectiveProfileId !== "" && userProfiles.some((p) => p.ProfileId === effectiveProfileId));
-  const showProfileDialog = !profilesLoading && userProfiles.length > 1 && !hasValidProfile;
-  const profileResolved = !profilesLoading && (userProfiles.length <= 1 || hasValidProfile);
+    (effectiveProfileId !== "" &&
+      userProfiles.some((p) => p.ProfileId === effectiveProfileId));
+  const showProfileDialog =
+    !profilesLoading && userProfiles.length > 1 && !hasValidProfile;
+  const profileResolved =
+    !profilesLoading && (userProfiles.length <= 1 || hasValidProfile);
 
   // Sync cookie for single-profile auto-select (external sync, no setState needed)
   useEffect(() => {
@@ -193,27 +196,49 @@ export function WorkbenchDashboard() {
     };
   }, []);
 
-  // Periodic session check — auto-logout when session expires
-  useEffect(() => {
-    const checkSession = () => {
-      authService.getSession().then((session) => {
+  const checkSession = useCallback(() => {
+    authService
+      .getSession()
+      .then((session) => {
         if (!session) {
           toast({
             title: "Session expired",
-            description: "Your SAP session has timed out. Please sign in again.",
+            description:
+              "Your SAP session has timed out. Please sign in again.",
             variant: "destructive",
           });
           router.push("/login");
         }
-      }).catch(() => {
-        // Session check failed — assume logged out
+      })
+      .catch(() => {
         router.push("/login");
       });
+  }, [router]);
+
+  // Check session immediately when user returns to this tab
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkSession();
+      }
+    };
+    const handleFocus = () => {
+      checkSession();
     };
 
-    const interval = setInterval(checkSession, 30_000);
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [checkSession]);
+
+  // Keep-alive ping every 5 minutes while user is reading results
+  useEffect(() => {
+    const interval = setInterval(checkSession, 5 * 60_000);
     return () => clearInterval(interval);
-  }, [router]);
+  }, [checkSession]);
 
   useEffect(() => {
     if (!needLogin) {
@@ -381,7 +406,9 @@ export function WorkbenchDashboard() {
       <main className="fiori-page flex h-dvh items-center justify-center px-3 py-3 text-sm">
         <div className="flex flex-col items-center gap-4">
           <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading your profiles...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading your profiles...
+          </p>
         </div>
       </main>
     );
@@ -401,12 +428,12 @@ export function WorkbenchDashboard() {
 
   return (
     <main
-        className={`fiori-page h-dvh overflow-hidden px-3 py-3 text-sm sm:px-4 ${
-          isResizing ? "cursor-grabbing select-none" : ""
-        }`}
-      >
-        <section className="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-3">
-          <header className="fiori-shell-bar flex flex-col gap-2 rounded-lg px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+      className={`fiori-page h-dvh overflow-hidden px-3 py-3 text-sm sm:px-4 ${
+        isResizing ? "cursor-grabbing select-none" : ""
+      }`}
+    >
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-3">
+        <header className="fiori-shell-bar flex flex-col gap-2 rounded-lg px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
               Open SQL Workbench
@@ -650,7 +677,7 @@ export function WorkbenchDashboard() {
                 <ResultsTable
                   entityName={selectedEntity?.name ?? selectedEntityName}
                   columns={resultColumns}
-pageInfo={resultPageInfo}
+                  pageInfo={resultPageInfo}
                   rows={resultRows}
                   isFullscreen={false}
                   isLoading={isRunning}
