@@ -39,21 +39,23 @@ function getErrorStatus(error: unknown) {
     : undefined;
 }
 
-function getErrorDetail(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) return fallback;
+function getErrorTitle(error: unknown, fallbackLabel: string) {
+  if (!(error instanceof Error)) return fallbackLabel;
 
-  const parts = [error.message];
   const extra = error as unknown as Record<string, unknown>;
-
-  if (typeof extra.sapStatus === "string" && extra.sapStatus) {
-    parts.push(`SAP Status: ${extra.sapStatus}`);
-  }
   if (typeof extra.sapErrorCode === "string" && extra.sapErrorCode) {
     const label = getErrorCodeLabel(extra.sapErrorCode);
-    parts.push(label !== extra.sapErrorCode ? `${label} (${extra.sapErrorCode})` : `Error Code: ${extra.sapErrorCode}`);
+    return label !== extra.sapErrorCode
+      ? `${label} (${extra.sapErrorCode})`
+      : extra.sapErrorCode;
   }
 
-  return parts.join("\n");
+  return fallbackLabel;
+}
+
+function getErrorDetail(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback;
+  return error.message || fallback;
 }
 
 function buildLocalPageInfo(rows: WorkbenchRow[]): WorkbenchPageInfo {
@@ -144,6 +146,8 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
       return { ...live, isLive };
     },
     staleTime: 60_000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
     enabled,
   });
 
@@ -426,13 +430,14 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
         setNeedLogin(true);
         return;
       }
+      const fallbackLabel = vars.type === "preview" ? "Preview failed" : "Query failed";
+      const title = getErrorTitle(error, fallbackLabel);
       const detail = getErrorDetail(error, "Unable to execute live OData query.");
-      const label = vars.type === "preview" ? "Preview failed" : "Query failed";
-      toast({ title: label, description: detail.slice(0, 200), variant: "destructive" });
+      toast({ title, description: detail.slice(0, 200), variant: "destructive" });
       setActivityEntries((prev) => [
         {
           id: `activity-${Date.now()}`,
-          title: `${label} for ${vars.entityName}`,
+          title: `${title} for ${vars.entityName}`,
           detail,
           timestampRaw: "/Date(1716496400000)/",
           tone: "error",
@@ -479,14 +484,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     const effectiveQuery = queryTextOverrideRef.current ?? queryText;
     queryTextOverrideRef.current = null;
 
-    if (effectiveQuery.trim() && !/\border\s+by\b/i.test(effectiveQuery)) {
-      toast({
-        title: "Missing ORDER BY clause",
-        description:
-          "Query without ORDER BY does not support reliable data pagination across pages.",
-        variant: "warning",
-      });
-    }
 
     executeMutation.mutate({
       type: "query",
