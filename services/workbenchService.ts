@@ -10,7 +10,6 @@ import type {
   WorkbenchTemplate,
 } from "@/types/workbench";
 import { jsonrepair } from "jsonrepair";
-import { toast } from "@/lib/toast";
 import { sapClient } from "@/services/sapClient";
 import { sqlAssistService } from "@/services/sqlAssistService";
 import type {
@@ -438,14 +437,6 @@ function unwrapRunQueryResult(payload: SapRunQueryEnvelope) {
 function assertSapSuccess(result: SapRunQueryResult, operationName: string) {
   const status = (result.Status ?? "").toString().toUpperCase();
   if (status && status !== "SUCCESS") {
-    if (status === "BLOCKED") {
-      toast({
-        title: `Error Code: ${result.ErrorCode || "BLOCKED"}`,
-        description: result.ErrorText || "Query blocked by SAP",
-        variant: "destructive",
-      });
-    }
-
     throw Object.assign(
       new Error(
         result.ErrorText ||
