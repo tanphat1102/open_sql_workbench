@@ -61,6 +61,7 @@ interface BuilderNodeCardProps {
   loading: boolean;
   entities: WorkbenchEntity[];
   isDragging: boolean;
+  hasHaving?: boolean;
   onUpdate: (patch: Partial<BuilderNode>) => void;
   onRemove: () => void;
   onToggleField: (fieldName: string) => void;
@@ -79,6 +80,7 @@ export function BuilderNodeCard({
   loading,
   entities,
   isDragging,
+  hasHaving = false,
   onUpdate,
   onRemove,
   onToggleField,
@@ -99,16 +101,43 @@ export function BuilderNodeCard({
         item.alias.trim().toLowerCase() === normalizedAlias,
     );
 
-  const groupByItems = node.groupBy;
+  const nodeFieldsList = parseFields(node.fields);
+  const hasAggInSelect = nodeFieldsList.some((f) => f.includes("("));
+  const nonAggSelectFields = nodeFieldsList.filter(
+    (f) => !f.includes("(") && f.trim() !== "*",
+  );
+
+  const validNodeGroupBy = node.groupBy.filter(
+    (f) =>
+      !f.trim() ||
+      nonAggSelectFields.some(
+        (sf) => normalizeFieldName(sf) === normalizeFieldName(f),
+      ),
+  );
+
+  const shouldSyncNonAgg =
+    validNodeGroupBy.some((f) => f.trim()) || hasAggInSelect || hasHaving;
+
+  const effectiveGroupByItems =
+    shouldSyncNonAgg && nonAggSelectFields.length > 0
+      ? Array.from(
+          new Set([
+            ...validNodeGroupBy.filter((f) => f.trim()),
+            ...nonAggSelectFields,
+          ]),
+        )
+      : validNodeGroupBy;
+
+  const groupByItems = effectiveGroupByItems;
 
   const updateGroupBy = (newItems: string[]) => {
     onUpdate({ groupBy: newItems });
   };
 
   const addGroupByRow = () => {
-    const hasEmptySlot = node.groupBy.some((f) => f.trim() === "");
+    const hasEmptySlot = groupByItems.some((f) => f.trim() === "");
     if (!hasEmptySlot) {
-      onUpdate({ groupBy: [...node.groupBy, ""] });
+      onUpdate({ groupBy: [...groupByItems, ""] });
     }
   };
 
@@ -226,6 +255,135 @@ export function BuilderNodeCard({
               Browse
             </Button>
           </div>
+          {/* Aggregate function quick buttons */}
+          {nodeFields.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {(() => {
+                const addAggregateExpr = (expr: string) => {
+                  const current = parseFields(node.fields);
+                  if (current.includes(expr)) return;
+
+                  const newFields = [...current, expr];
+                  const nonAggregates = newFields.filter(
+                    (f) => !f.includes("("),
+                  );
+                  const currentGroupBy = node.groupBy.filter((g) => g.trim());
+                  const nextGroupBy = [...currentGroupBy];
+
+                  for (const f of nonAggregates) {
+                    if (!nextGroupBy.includes(f)) {
+                      nextGroupBy.push(f);
+                    }
+                  }
+
+                  onUpdate({
+                    fields: newFields.join(", "),
+                    ...(nextGroupBy.length > currentGroupBy.length
+                      ? { groupBy: nextGroupBy }
+                      : {}),
+                  });
+                };
+
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenFieldPicker((fieldNames) => {
+                          const field = fieldNames[fieldNames.length - 1];
+                          if (!field) return;
+                          addAggregateExpr(`MAX( ${field} ) AS MAX_${field}`);
+                        })
+                      }
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    >
+                      MAX
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenFieldPicker((fieldNames) => {
+                          const field = fieldNames[fieldNames.length - 1];
+                          if (!field) return;
+                          addAggregateExpr(`MIN( ${field} ) AS MIN_${field}`);
+                        })
+                      }
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    >
+                      MIN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenFieldPicker((fieldNames) => {
+                          const field = fieldNames[fieldNames.length - 1];
+                          if (!field) return;
+                          addAggregateExpr(`SUM( ${field} ) AS SUM_${field}`);
+                        })
+                      }
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    >
+                      SUM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenFieldPicker((fieldNames) => {
+                          const field = fieldNames[fieldNames.length - 1];
+                          if (!field) return;
+                          addAggregateExpr(`AVG( ${field} ) AS AVG_${field}`);
+                        })
+                      }
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    >
+                      AVG
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        addAggregateExpr("COUNT( * ) AS TOTAL_FLIGHTS");
+                      }}
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                      title="Count all rows (including NULLs)"
+                    >
+                      COUNT(*)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenFieldPicker((fieldNames) => {
+                          const field = fieldNames[fieldNames.length - 1];
+                          if (!field) return;
+                          addAggregateExpr(`COUNT( ${field} ) AS COUNT_${field}`);
+                        })
+                      }
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                      title="Count non-null values of a specific field"
+                    >
+                      COUNT(field)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenFieldPicker((fieldNames) => {
+                          const field = fieldNames[fieldNames.length - 1];
+                          if (!field) return;
+                          addAggregateExpr(
+                            `COUNT( DISTINCT ${field} ) AS UNIQUE_${field}`,
+                          );
+                        })
+                      }
+                      className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
+                      title="Count unique non-null values of a specific field"
+                    >
+                      COUNT DISTINCT
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
+          ) : null}
+
           {selectedFields.size > 0 ? (
             <div className="flex max-h-20 flex-wrap content-start gap-1 overflow-auto">
               {parseFields(node.fields).map((fieldName) => (

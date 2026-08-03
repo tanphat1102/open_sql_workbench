@@ -238,6 +238,19 @@ function applySuggestionToJoin(
   };
 }
 
+function formatFieldWithAlias(field: string, alias: string): string {
+  if (!field || field.includes("~")) return field;
+  if (!field.includes("(")) return `${alias}~${field}`;
+
+  return field.replace(
+    /\(\s*(DISTINCT\s+)?([a-zA-Z0-9_]+|\*)\s*\)/i,
+    (match, distinctPrefix = "", colName) => {
+      if (colName === "*" || colName.includes("~")) return match;
+      return `( ${distinctPrefix}${alias}~${colName} )`;
+    },
+  );
+}
+
 function buildSelectList(nodes: BuilderNode[]) {
   if (nodes.length === 1) {
     const fields = parseFields(nodes[0].fields);
@@ -246,7 +259,7 @@ function buildSelectList(nodes: BuilderNode[]) {
 
   const fields = nodes.flatMap((node) =>
     parseFields(node.fields).map((field) =>
-      field.includes("~") ? field : `${node.alias}~${field}`,
+      formatFieldWithAlias(field, node.alias),
     ),
   );
 
@@ -284,7 +297,13 @@ function buildConditionClause(
   filters: BuilderFilter[],
   clause: "WHERE" | "HAVING",
 ) {
-  const clauseFilters = filters.filter((f) => (f.clause ?? "WHERE") === clause);
+  const clauseFilters = filters.filter((f) => {
+    const isAgg = /\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(f.field);
+    if (clause === "HAVING") {
+      return f.clause === "HAVING" && isAgg;
+    }
+    return f.clause === "WHERE" || (!isAgg && f.clause === "HAVING");
+  });
   const conditions = clauseFilters
     .filter((filter) => {
       if (!filter.nodeId || !filter.field) return false;
@@ -314,19 +333,47 @@ function buildWhereClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
   return buildConditionClause(nodes, filters, "WHERE");
 }
 
-function buildGroupByClause(nodes: BuilderNode[]) {
-  if (nodes.length === 1) {
-    const fields = nodes[0].groupBy.filter((f) => f.trim());
-    return fields.length > 0 ? `GROUP BY ${fields.join(", ")}` : "";
-  }
+function buildGroupByClause(
+  nodes: BuilderNode[],
+  filters: BuilderFilter[] = [],
+) {
+  const hasHaving = filters.some((f) => f.clause === "HAVING");
 
-  const fields = nodes.flatMap((node) =>
-    node.groupBy
-      .filter((f) => f.trim())
-      .map((field) => (field.includes("~") ? field : `${node.alias}~${field}`)),
-  );
+  const allGroupByFields = nodes.flatMap((node) => {
+    const nodeFieldsList = parseFields(node.fields);
+    const hasAggInSelect = nodeFieldsList.some((f) => f.includes("("));
+    const nonAggSelectFields = nodeFieldsList.filter(
+      (f) => !f.includes("(") && f.trim() !== "*",
+    );
 
-  return fields.length > 0 ? `GROUP BY ${fields.join(", ")}` : "";
+    const specified = node.groupBy.filter(
+      (f) =>
+        f.trim() &&
+        nonAggSelectFields.some(
+          (sf) => normalizeFieldName(sf) === normalizeFieldName(f),
+        ),
+    );
+
+    const shouldIncludeAllNonAgg =
+      specified.length > 0 || hasHaving || hasAggInSelect;
+
+    let combined = specified;
+    if (shouldIncludeAllNonAgg && nonAggSelectFields.length > 0) {
+      combined = Array.from(new Set([...specified, ...nonAggSelectFields]));
+    }
+
+    if (nodes.length === 1) {
+      return combined;
+    }
+
+    return combined.map((field) =>
+      field.includes("~") ? field : `${node.alias}~${field}`,
+    );
+  });
+
+  return allGroupByFields.length > 0
+    ? `GROUP BY ${allGroupByFields.join(", ")}`
+    : "";
 }
 
 function buildHavingClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
@@ -347,7 +394,7 @@ function buildSql(
       `SELECT ${buildSelectList(nodes)}`,
       `FROM ${nodes[0].entityName}`,
       buildWhereClause(nodes, filters),
-      buildGroupByClause(nodes),
+      buildGroupByClause(nodes, filters),
       buildHavingClause(nodes, filters),
       buildOrderByClause(nodes),
     ]
@@ -504,9 +551,23 @@ function isFilterValid(
   }
 
   const node = nodes.find((item) => item.id === filter.nodeId);
+  if (!node) return false;
+
+  const aggMatch = /^([A-Z]+)\s*\(\s*(?:DISTINCT\s+)?([A-Z0-9_]+|\*)\s*\)$/i.exec(
+    filter.field.trim(),
+  );
+
+  if (aggMatch) {
+    const innerCol = aggMatch[2].toUpperCase();
+    if (innerCol === "*") return true;
+    return getNodeFields(node, fieldsByEntity).some(
+      (field) => getFieldName(field) === innerCol,
+    );
+  }
+
   const normalizedField = normalizeFieldName(filter.field);
 
-  if (!node || blockedJoinFields.has(normalizedField)) {
+  if (blockedJoinFields.has(normalizedField)) {
     return false;
   }
 
@@ -814,8 +875,8 @@ export function VisualQueryBuilder({
       {
         id: `filter-${Date.now()}`,
         nodeId: nodes[0].id,
-        field: "",
-        operator: "=",
+        field: clause === "HAVING" ? "COUNT(*)" : "",
+        operator: clause === "HAVING" ? ">" : "=",
         value: "",
         value2: "",
         conjunction: "AND",
@@ -850,7 +911,11 @@ export function VisualQueryBuilder({
             )
           : [...selectedFields, normalizedFieldName];
 
-        return { ...node, fields: nextFields.join(", ") };
+        const nextGroupBy = node.groupBy.filter(
+          (field) => normalizeFieldName(field) !== normalizedFieldName,
+        );
+
+        return { ...node, fields: nextFields.join(", "), groupBy: nextGroupBy };
       }),
     );
   }
@@ -970,8 +1035,24 @@ export function VisualQueryBuilder({
       return;
     }
 
+    const invalidHaving = filters.find(
+      (f) =>
+        f.clause === "HAVING" &&
+        f.field &&
+        !/\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(f.field),
+    );
+
+    if (invalidHaving) {
+      toast({
+        title: "HAVING requires aggregate function",
+        description: `Field '${invalidHaving.field}' is not an aggregate function. Move non-aggregate conditions to WHERE clause.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const hasHaving = filters.some((f) => f.clause === "HAVING");
-    const hasGroupBy = nodes.some((n) => n.groupBy.some((f) => f.trim()));
+    const hasGroupBy = Boolean(buildGroupByClause(nodes, filters).trim());
 
     if (hasHaving && !hasGroupBy) {
       toast({
@@ -1141,6 +1222,7 @@ export function VisualQueryBuilder({
                 loading={!!loadingFields[node.entityName]}
                 entities={entities}
                 isDragging={activeDragNodeId === node.id}
+                hasHaving={filters.some((f) => f.clause === "HAVING")}
                 onUpdate={(patch) => updateNode(node.id, patch)}
                 onRemove={() => removeNode(node.id)}
                 onToggleField={(fieldName) =>
