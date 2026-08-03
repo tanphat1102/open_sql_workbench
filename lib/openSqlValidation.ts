@@ -571,29 +571,86 @@ export function validateOpenSql(
     }
 
     const groupByIndex = findPatternIndex(query, /\bGROUP\s+BY\b/i);
-    if (groupByIndex >= 0) {
-      const groupByClause = query
-        .slice(groupByIndex)
-        .replace(/^GROUP\s+BY/i, "")
-        .replace(/\b(HAVING|ORDER\s+BY|UP\s+TO|LIMIT)\b[\s\S]*$/i, "")
-        .trim();
+    const havingIndex = findKeywordIndex(query, "HAVING");
 
-      if (!groupByClause) {
+    if (groupByIndex >= 0 || havingIndex >= 0) {
+      const groupByClause =
+        groupByIndex >= 0
+          ? query
+              .slice(groupByIndex)
+              .replace(/^GROUP\s+BY/i, "")
+              .replace(/\b(HAVING|ORDER\s+BY|UP\s+TO|LIMIT)\b[\s\S]*$/i, "")
+              .trim()
+          : "";
+
+      if (groupByIndex >= 0 && !groupByClause) {
         errors.push({
           message: "GROUP BY needs at least one field.",
           startColumn: groupByIndex + "GROUP BY".length + 1,
           endColumn: groupByIndex + "GROUP BY".length + 1,
         });
       }
+
+      const groupByFields = new Set(
+        groupByClause
+          .split(",")
+          .map((f) => f.trim().replace(/^[A-Z0-9_]+\~/i, "").toUpperCase())
+          .filter(Boolean),
+      );
+
+      if (fromIndex >= 0) {
+        const projection = getSelectProjection(query, fromIndex);
+        const fields = splitProjectionFields(projection.text);
+
+        fields.forEach((fieldObj) => {
+          const rawField = fieldObj.text.trim();
+          if (!rawField || rawField === "*") return;
+
+          const isAggregate = /\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(rawField);
+          if (isAggregate) return;
+
+          const cleanField = rawField
+            .replace(/\s+AS\s+[A-Z0-9_]+/i, "")
+            .replace(/^[A-Z0-9_]+\~/i, "")
+            .trim()
+            .toUpperCase();
+
+          if (cleanField && !groupByFields.has(cleanField)) {
+            const startCol = projection.startIndex + fieldObj.startIndex + 1;
+            errors.push({
+              message: `Selected field "${cleanField}" must be grouped or aggregated (SELECT_FIELD_NOT_GROUPED).`,
+              startColumn: startCol,
+              endColumn: startCol + cleanField.length,
+            });
+          }
+        });
+      }
     }
 
-    const havingIndex = findKeywordIndex(query, "HAVING");
-    if (havingIndex >= 0 && groupByIndex === -1) {
-      errors.push({
-        message: "HAVING requires a GROUP BY clause.",
-        startColumn: havingIndex + 1,
-        endColumn: havingIndex + "HAVING".length + 1,
-      });
+    if (havingIndex >= 0) {
+      if (groupByIndex === -1) {
+        errors.push({
+          message: "HAVING requires a GROUP BY clause.",
+          startColumn: havingIndex + 1,
+          endColumn: havingIndex + "HAVING".length + 1,
+        });
+      }
+
+      const havingClause = query
+        .slice(havingIndex)
+        .replace(/^HAVING/i, "")
+        .replace(/\b(ORDER\s+BY|UP\s+TO|LIMIT)\b[\s\S]*$/i, "")
+        .trim();
+
+      if (havingClause && !/\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(havingClause)) {
+        errors.push({
+          message:
+            "HAVING conditions should use aggregate functions. Move non-aggregate conditions to WHERE clause.",
+          startColumn: havingIndex + 1,
+          endColumn: havingIndex + "HAVING".length + 1,
+          severity: "warning",
+        });
+      }
     }
 
     const orderByIndex = findPatternIndex(query, /\bORDER\s+BY\b/i);
