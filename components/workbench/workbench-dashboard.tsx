@@ -154,10 +154,11 @@ export function WorkbenchDashboard() {
     document.cookie = `OSWB_SAP_PROFILE=${encodeURIComponent(profileId)}; path=/; SameSite=Lax`;
     setSelectedProfileId(profileId);
     setProfileOpen(false);
+    queryClient.removeQueries({ queryKey: ["snapshot"] });
     queryClient.invalidateQueries({ queryKey: ["snapshot"] });
     toast({
       title: "Profile selected",
-      description: `Using profile "${profileId}".`,
+      description: `Switched to profile "${profileId}". Loading tables...`,
     });
   }
 
