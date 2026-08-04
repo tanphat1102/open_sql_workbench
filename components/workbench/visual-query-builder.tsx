@@ -346,19 +346,15 @@ function buildGroupByClause(
       (f) => !f.includes("(") && f.trim() !== "*",
     );
 
-    const specified = node.groupBy.filter(
-      (f) =>
-        f.trim() &&
-        nonAggSelectFields.some(
-          (sf) => normalizeFieldName(sf) === normalizeFieldName(f),
-        ),
-    );
+    const isGroupModeActive = hasAggInSelect || hasHaving;
+    const specified = node.groupBy.filter((f) => f.trim());
 
-    const shouldIncludeAllNonAgg =
-      specified.length > 0 || hasHaving || hasAggInSelect;
+    if (!isGroupModeActive && specified.length === 0) {
+      return [];
+    }
 
     let combined = specified;
-    if (shouldIncludeAllNonAgg && nonAggSelectFields.length > 0) {
+    if (isGroupModeActive && nonAggSelectFields.length > 0) {
       combined = Array.from(new Set([...specified, ...nonAggSelectFields]));
     }
 
@@ -431,7 +427,7 @@ function buildSql(
     lines.push(whereClause);
   }
 
-  const groupByClause = buildGroupByClause(nodes);
+  const groupByClause = buildGroupByClause(nodes, filters);
 
   if (groupByClause) {
     lines.push(groupByClause);

@@ -107,37 +107,53 @@ export function BuilderNodeCard({
     (f) => !f.includes("(") && f.trim() !== "*",
   );
 
-  const validNodeGroupBy = node.groupBy.filter(
+  const isGroupModeActive = hasAggInSelect || hasHaving;
+
+  const validManualGroupBy = node.groupBy.filter(
     (f) =>
       !f.trim() ||
       nonAggSelectFields.some(
         (sf) => normalizeFieldName(sf) === normalizeFieldName(f),
+      ) ||
+      nodeFields.some(
+        (nf) => normalizeFieldName(getFieldName(nf)) === normalizeFieldName(f),
       ),
   );
 
-  const shouldSyncNonAgg =
-    validNodeGroupBy.some((f) => f.trim()) || hasAggInSelect || hasHaving;
-
-  const effectiveGroupByItems =
-    shouldSyncNonAgg && nonAggSelectFields.length > 0
-      ? Array.from(
-          new Set([
-            ...validNodeGroupBy.filter((f) => f.trim()),
-            ...nonAggSelectFields,
-          ]),
-        )
-      : validNodeGroupBy;
+  const effectiveGroupByItems = isGroupModeActive
+    ? Array.from(
+        new Set([
+          ...validManualGroupBy,
+          ...nonAggSelectFields,
+        ]),
+      )
+    : validManualGroupBy;
 
   const groupByItems = effectiveGroupByItems;
 
   const updateGroupBy = (newItems: string[]) => {
-    onUpdate({ groupBy: newItems });
+    const manualItems = newItems.filter(
+      (item) => !item.trim() || !nonAggSelectFields.includes(item),
+    );
+    onUpdate({ groupBy: manualItems });
   };
 
   const addGroupByRow = () => {
     const hasEmptySlot = groupByItems.some((f) => f.trim() === "");
     if (!hasEmptySlot) {
-      onUpdate({ groupBy: [...groupByItems, ""] });
+      onUpdate({ groupBy: [...node.groupBy, ""] });
+    }
+  };
+
+  const handleRemoveGroupByRow = (index: number) => {
+    const itemToRemove = groupByItems[index];
+    if (!itemToRemove) return;
+
+    if (nonAggSelectFields.includes(itemToRemove)) {
+      onToggleField(itemToRemove);
+    } else {
+      const nextManual = node.groupBy.filter((item) => item !== itemToRemove);
+      onUpdate({ groupBy: nextManual });
     }
   };
 
@@ -259,11 +275,14 @@ export function BuilderNodeCard({
           {nodeFields.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {(() => {
-                const addAggregateExpr = (expr: string) => {
-                  const current = parseFields(node.fields);
-                  if (current.includes(expr)) return;
+                const addAggregateExprs = (exprs: string[]) => {
+                  if (exprs.length === 0) return;
 
-                  const newFields = [...current, expr];
+                  const current = parseFields(node.fields);
+                  const newExprs = exprs.filter((expr) => !current.includes(expr));
+                  if (newExprs.length === 0) return;
+
+                  const newFields = [...current, ...newExprs];
                   const nonAggregates = newFields.filter(
                     (f) => !f.includes("("),
                   );
@@ -290,9 +309,11 @@ export function BuilderNodeCard({
                       type="button"
                       onClick={() =>
                         onOpenFieldPicker((fieldNames) => {
-                          const field = fieldNames[fieldNames.length - 1];
-                          if (!field) return;
-                          addAggregateExpr(`MAX( ${field} ) AS MAX_${field}`);
+                          if (fieldNames.length === 0) return;
+                          const exprs = fieldNames.map(
+                            (field) => `MAX( ${field} ) AS MAX_${field}`,
+                          );
+                          addAggregateExprs(exprs);
                         })
                       }
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -303,9 +324,11 @@ export function BuilderNodeCard({
                       type="button"
                       onClick={() =>
                         onOpenFieldPicker((fieldNames) => {
-                          const field = fieldNames[fieldNames.length - 1];
-                          if (!field) return;
-                          addAggregateExpr(`MIN( ${field} ) AS MIN_${field}`);
+                          if (fieldNames.length === 0) return;
+                          const exprs = fieldNames.map(
+                            (field) => `MIN( ${field} ) AS MIN_${field}`,
+                          );
+                          addAggregateExprs(exprs);
                         })
                       }
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -316,9 +339,11 @@ export function BuilderNodeCard({
                       type="button"
                       onClick={() =>
                         onOpenFieldPicker((fieldNames) => {
-                          const field = fieldNames[fieldNames.length - 1];
-                          if (!field) return;
-                          addAggregateExpr(`SUM( ${field} ) AS SUM_${field}`);
+                          if (fieldNames.length === 0) return;
+                          const exprs = fieldNames.map(
+                            (field) => `SUM( ${field} ) AS SUM_${field}`,
+                          );
+                          addAggregateExprs(exprs);
                         })
                       }
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -329,9 +354,11 @@ export function BuilderNodeCard({
                       type="button"
                       onClick={() =>
                         onOpenFieldPicker((fieldNames) => {
-                          const field = fieldNames[fieldNames.length - 1];
-                          if (!field) return;
-                          addAggregateExpr(`AVG( ${field} ) AS AVG_${field}`);
+                          if (fieldNames.length === 0) return;
+                          const exprs = fieldNames.map(
+                            (field) => `AVG( ${field} ) AS AVG_${field}`,
+                          );
+                          addAggregateExprs(exprs);
                         })
                       }
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -341,7 +368,7 @@ export function BuilderNodeCard({
                     <button
                       type="button"
                       onClick={() => {
-                        addAggregateExpr("COUNT( * ) AS TOTAL_FLIGHTS");
+                        addAggregateExprs(["COUNT( * ) AS TOTAL_FLIGHTS"]);
                       }}
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
                       title="Count all rows (including NULLs)"
@@ -352,9 +379,11 @@ export function BuilderNodeCard({
                       type="button"
                       onClick={() =>
                         onOpenFieldPicker((fieldNames) => {
-                          const field = fieldNames[fieldNames.length - 1];
-                          if (!field) return;
-                          addAggregateExpr(`COUNT( ${field} ) AS COUNT_${field}`);
+                          if (fieldNames.length === 0) return;
+                          const exprs = fieldNames.map(
+                            (field) => `COUNT( ${field} ) AS COUNT_${field}`,
+                          );
+                          addAggregateExprs(exprs);
                         })
                       }
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -366,11 +395,11 @@ export function BuilderNodeCard({
                       type="button"
                       onClick={() =>
                         onOpenFieldPicker((fieldNames) => {
-                          const field = fieldNames[fieldNames.length - 1];
-                          if (!field) return;
-                          addAggregateExpr(
-                            `COUNT( DISTINCT ${field} ) AS UNIQUE_${field}`,
+                          if (fieldNames.length === 0) return;
+                          const exprs = fieldNames.map(
+                            (field) => `COUNT( DISTINCT ${field} ) AS UNIQUE_${field}`,
                           );
+                          addAggregateExprs(exprs);
                         })
                       }
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -564,10 +593,7 @@ export function BuilderNodeCard({
                 </Button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const next = groupByItems.filter((_, i) => i !== index);
-                    updateGroupBy(next);
-                  }}
+                  onClick={() => handleRemoveGroupByRow(index)}
                   className="shrink-0 text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 className="size-3" />
