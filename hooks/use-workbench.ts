@@ -133,7 +133,7 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     isLoading: isLoadingSnapshot,
     error: snapshotError,
   } = useQuery({
-    queryKey: ["snapshot"],
+    queryKey: ["snapshot", getProfileId()],
     queryFn: async () => {
       const { snapshot: live, isLive } = await workbenchService.loadSnapshot();
       if (live.entities.length === 0) {
@@ -147,9 +147,9 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
       }
       return { ...live, isLive };
     },
-    staleTime: 60_000,
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
+    staleTime: 0,
+    gcTime: 0,
+    retry: 1,
     enabled,
   });
 
@@ -176,28 +176,31 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
   }, [snapshotError]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
-  // Initialize entity selection and activity from first snapshot load
+  // Initialize or update entity selection and activity when snapshot loads
   useEffect(() => {
-    if (entities.length === 0 || entitiesInitializedRef.current) return;
-    entitiesInitializedRef.current = true;
+    if (entities.length === 0) return;
+    const exists = entities.some((e) => e.name === selectedEntityName);
+    if (!exists || !entitiesInitializedRef.current) {
+      entitiesInitializedRef.current = true;
 
-    const defaultEntity = entities[0].name;
-    const defaultTemplate = templates[0];
-    setSelectedEntityName(defaultEntity);
-    setActiveTemplateId(defaultTemplate?.id ?? "");
-    setQueryText(
-      defaultTemplate
-        ? buildTemplateQuery(defaultTemplate, defaultEntity)
-        : "",
-    );
-    const defaultRows = rowsByEntity[defaultEntity] ?? [];
-    setResultRows(defaultRows);
-    setResultColumns(buildFallbackColumns(defaultRows));
+      const defaultEntity = entities[0].name;
+      const defaultTemplate = templates[0];
+      setSelectedEntityName(defaultEntity);
+      setActiveTemplateId(defaultTemplate?.id ?? "");
+      setQueryText(
+        defaultTemplate
+          ? buildTemplateQuery(defaultTemplate, defaultEntity)
+          : "",
+      );
+      const defaultRows = rowsByEntity[defaultEntity] ?? [];
+      setResultRows(defaultRows);
+      setResultColumns(buildFallbackColumns(defaultRows));
+    }
 
     if (snapshot?.activity.length) {
       setActivityEntries(snapshot.activity);
     }
-  }, [entities, templates, rowsByEntity, snapshot]);
+  }, [entities, templates, rowsByEntity, snapshot, selectedEntityName]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const selectedEntity = useMemo(
