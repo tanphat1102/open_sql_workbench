@@ -10,10 +10,12 @@ import type {
 
 const servicePath = `opu/odata/sap/${process.env.NEXT_PUBLIC_SAP_PACKAGE!}`;
 
-function getProfileId() {
-  if (typeof document === "undefined") return (process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "");
+export function getProfileId() {
+  if (typeof document === "undefined")
+    return process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "";
   const match = document.cookie.match(/(?:^|;\s*)OSWB_SAP_PROFILE=([^;]*)/);
-  return match?.[1] || (process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "");
+  const val = match?.[1] ? decodeURIComponent(match[1]) : "";
+  return val || process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "";
 }
 
 function quoteODataString(value: string) {

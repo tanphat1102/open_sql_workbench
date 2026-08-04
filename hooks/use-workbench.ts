@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { workbenchService } from "@/services/workbenchService";
+import { getProfileId } from "@/services/sqlAssistService";
 import { getErrorCodeLabel } from "@/lib/sapParser";
 import { toast } from "@/lib/toast";
 import type {
@@ -137,9 +138,10 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
       const { snapshot: live, isLive } = await workbenchService.loadSnapshot();
       if (live.entities.length === 0) {
         const pkg = process.env.NEXT_PUBLIC_SAP_PACKAGE ?? "unknown";
+        const activeProfile = getProfileId() || "(not set)";
         throw new Error(
           isLive
-            ? `No tables returned from ${pkg} for profile "${process.env.NEXT_PUBLIC_SQLWB_PROFILE_ID || "(not set)"}". Check whitelist configuration.`
+            ? `No tables returned from ${pkg} for profile "${activeProfile}". Check whitelist configuration.`
             : `Cannot connect to SAP package ${pkg}. Check SAP_PACKAGE and connection.`,
         );
       }
