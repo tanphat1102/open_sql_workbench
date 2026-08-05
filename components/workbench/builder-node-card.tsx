@@ -275,6 +275,12 @@ export function BuilderNodeCard({
           {nodeFields.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {(() => {
+                const makeAlias = (prefix: string, field: string) => {
+                  const cleanField = field.trim().toUpperCase();
+                  const raw = `${prefix}_${cleanField}`;
+                  return raw.length > 30 ? raw.slice(0, 30) : raw;
+                };
+
                 const addAggregateExprs = (exprs: string[]) => {
                   if (exprs.length === 0) return;
 
@@ -311,7 +317,7 @@ export function BuilderNodeCard({
                         onOpenFieldPicker((fieldNames) => {
                           if (fieldNames.length === 0) return;
                           const exprs = fieldNames.map(
-                            (field) => `MAX( ${field} ) AS MAX_${field}`,
+                            (field) => `MAX( ${field} ) AS ${makeAlias("MAX", field)}`,
                           );
                           addAggregateExprs(exprs);
                         })
@@ -326,7 +332,7 @@ export function BuilderNodeCard({
                         onOpenFieldPicker((fieldNames) => {
                           if (fieldNames.length === 0) return;
                           const exprs = fieldNames.map(
-                            (field) => `MIN( ${field} ) AS MIN_${field}`,
+                            (field) => `MIN( ${field} ) AS ${makeAlias("MIN", field)}`,
                           );
                           addAggregateExprs(exprs);
                         })
@@ -341,7 +347,7 @@ export function BuilderNodeCard({
                         onOpenFieldPicker((fieldNames) => {
                           if (fieldNames.length === 0) return;
                           const exprs = fieldNames.map(
-                            (field) => `SUM( ${field} ) AS SUM_${field}`,
+                            (field) => `SUM( ${field} ) AS ${makeAlias("SUM", field)}`,
                           );
                           addAggregateExprs(exprs);
                         })
@@ -356,7 +362,7 @@ export function BuilderNodeCard({
                         onOpenFieldPicker((fieldNames) => {
                           if (fieldNames.length === 0) return;
                           const exprs = fieldNames.map(
-                            (field) => `AVG( ${field} ) AS AVG_${field}`,
+                            (field) => `AVG( ${field} ) AS ${makeAlias("AVG", field)}`,
                           );
                           addAggregateExprs(exprs);
                         })
@@ -368,7 +374,7 @@ export function BuilderNodeCard({
                     <button
                       type="button"
                       onClick={() => {
-                        addAggregateExprs(["COUNT( * ) AS TOTAL_FLIGHTS"]);
+                        addAggregateExprs(["COUNT( * ) AS TOTAL_COUNT"]);
                       }}
                       className="h-5 rounded border border-border bg-white px-1.5 text-[10px] leading-none text-muted-foreground hover:border-primary/50 hover:text-primary"
                       title="Count all rows (including NULLs)"
@@ -381,7 +387,7 @@ export function BuilderNodeCard({
                         onOpenFieldPicker((fieldNames) => {
                           if (fieldNames.length === 0) return;
                           const exprs = fieldNames.map(
-                            (field) => `COUNT( ${field} ) AS COUNT_${field}`,
+                            (field) => `COUNT( ${field} ) AS ${makeAlias("COUNT", field)}`,
                           );
                           addAggregateExprs(exprs);
                         })
@@ -397,7 +403,7 @@ export function BuilderNodeCard({
                         onOpenFieldPicker((fieldNames) => {
                           if (fieldNames.length === 0) return;
                           const exprs = fieldNames.map(
-                            (field) => `COUNT( DISTINCT ${field} ) AS UNIQUE_${field}`,
+                            (field) => `COUNT( DISTINCT ${field} ) AS ${makeAlias("UNIQUE", field)}`,
                           );
                           addAggregateExprs(exprs);
                         })
