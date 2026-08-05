@@ -106,7 +106,7 @@ const sqlKeywords = [
 ];
 
 const sqlFunctions = [
-  "COUNT(*)",
+  "COUNT",
   "SUM",
   "AVG",
   "MIN",
@@ -207,9 +207,7 @@ function buildCompletionItems(
   const functionSuggestions = sqlFunctions.map((sqlFunction) => ({
     label: sqlFunction,
     kind: monaco.languages.CompletionItemKind.Function,
-    insertText: sqlFunction.includes("(")
-      ? sqlFunction
-      : `${sqlFunction}(\${1:${firstKeyField}})`,
+    insertText: `${sqlFunction}( \${1:${firstKeyField}} )`,
     insertTextRules:
       monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
     range,
@@ -664,6 +662,8 @@ function stripTableQualifier(fieldName: string) {
   );
 }
 
+const AGGREGATE_KEYWORDS = new Set(["MAX", "MIN", "SUM", "AVG", "COUNT"]);
+
 function addFieldError(
   errors: SemanticValidationError[],
   fieldName: string,
@@ -672,6 +672,7 @@ function addFieldError(
   tableName: string,
 ) {
   const normalizedField = stripTableQualifier(fieldName);
+  if (AGGREGATE_KEYWORDS.has(normalizedField.toUpperCase())) return;
   if (validFieldNames.has(normalizedField)) return;
   errors.push({
     message: `Unknown field "${fieldName}" for table ${tableName}.`,
@@ -696,15 +697,34 @@ function addDelimitedFieldErrors({
   clause.split(",").reduce((offset, part) => {
     const trimmedPart = part.trim();
     const leadingWhitespace = part.length - part.trimStart().length;
-    const fieldMatch = /^([A-Z_][A-Z0-9_./~]*)/i.exec(trimmedPart);
-    if (fieldMatch?.[1] && fieldMatch[1] !== "*") {
-      addFieldError(
-        errors,
-        fieldMatch[1],
-        clauseStartIndex + offset + leadingWhitespace,
-        validFieldNames,
-        tableName,
+    const aggMatch =
+      /^(MAX|MIN|SUM|AVG|COUNT)\s*\(\s*(?:DISTINCT\s+)?([A-Z0-9_./~]+|\*)\s*\)/i.exec(
+        trimmedPart,
       );
+
+    if (aggMatch) {
+      const innerField = aggMatch[2];
+      if (innerField && innerField !== "*") {
+        const innerOffset = trimmedPart.indexOf(innerField);
+        addFieldError(
+          errors,
+          innerField,
+          clauseStartIndex + offset + leadingWhitespace + innerOffset,
+          validFieldNames,
+          tableName,
+        );
+      }
+    } else {
+      const fieldMatch = /^([A-Z_][A-Z0-9_./~]*)/i.exec(trimmedPart);
+      if (fieldMatch?.[1] && fieldMatch[1] !== "*") {
+        addFieldError(
+          errors,
+          fieldMatch[1],
+          clauseStartIndex + offset + leadingWhitespace,
+          validFieldNames,
+          tableName,
+        );
+      }
     }
     return offset + part.length + 1;
   }, 0);
