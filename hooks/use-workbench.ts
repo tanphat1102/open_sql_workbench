@@ -420,7 +420,7 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
       setActivityEntries((prev) => [
         {
           id: `activity-${Date.now()}`,
-          title: `${label} for ${execution.entitySetName}`,
+          title: label,
           detail: execution.isCountQuery
             ? `Counted ${execution.rows[0]?.RecordCount ?? 0} records through ${execution.queryPath}`
             : `Loaded page ${execution.pageInfo.page} with ${execution.rows.length} rows through ${execution.queryPath}`,
@@ -442,7 +442,7 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
       setActivityEntries((prev) => [
         {
           id: `activity-${Date.now()}`,
-          title: `${title} for ${vars.entityName}`,
+          title,
           detail,
           timestampRaw: "/Date(1716496400000)/",
           tone: "error",
@@ -485,15 +485,26 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     resultRows.length,
   ]);
 
+  function parseTableNameFromQuery(query: string) {
+    const match = /\bFROM\s+([A-Z0-9_./-]+)/i.exec(query);
+    return match?.[1] ?? "";
+  }
+
   function runQuery(page = 1) {
     const effectiveQuery = queryTextOverrideRef.current ?? queryText;
     queryTextOverrideRef.current = null;
 
+    const tableInQuery = parseTableNameFromQuery(effectiveQuery);
+    const targetEntity = tableInQuery || selectedEntityName;
+
+    if (tableInQuery && tableInQuery !== selectedEntityName) {
+      setSelectedEntityName(tableInQuery);
+    }
 
     executeMutation.mutate({
       type: "query",
       queryText: effectiveQuery,
-      entityName: selectedEntityName,
+      entityName: targetEntity,
       page,
     });
   }
