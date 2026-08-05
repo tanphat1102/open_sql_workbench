@@ -1430,6 +1430,12 @@ export function VisualQueryBuilder({
                       fields: fieldNames.join(", "),
                     });
                   }
+                  toast({
+                    title: "Fields applied",
+                    description: `Successfully applied ${fieldNames.length} selected field(s) to "${pickerNode.alias}".`,
+                  });
+                  setFieldPickerNodeId(null);
+                  fieldPickerCallbackRef.current = null;
                 }}
               />
             );

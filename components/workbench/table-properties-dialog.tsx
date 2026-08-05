@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -305,6 +306,10 @@ export function TablePropertiesDialog({
     const names = [...selectedFields].filter((n) => allFieldNames.has(n));
     if (names.length > 0) {
       onPreviewFields?.(names);
+      toast({
+        title: "Fields applied",
+        description: `Applied ${names.length} selected field${names.length > 1 ? "s" : ""} from "${entityName}".`,
+      });
       if (!selectionMode) {
         onOpenChange(false);
       }

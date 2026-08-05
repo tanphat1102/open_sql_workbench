@@ -731,6 +731,11 @@ export function WorkbenchDashboard() {
         onPreviewFields={(fieldNames) => {
           const cols = fieldNames.join(", ");
           setQueryText(`SELECT ${cols}\nFROM ${propertiesEntityName}`);
+          toast({
+            title: "Query updated from Entity Browser",
+            description: `Applied ${fieldNames.length} selected field(s) from "${propertiesEntityName}" to SQL Editor.`,
+          });
+          setShowPropertiesDialog(false);
         }}
       />
       <SavedQueriesDialog
