@@ -124,59 +124,7 @@ export function QueryWorkbench({
       <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
         <CardContent className="flex min-h-0 flex-1 flex-col p-0">
           <div className="flex flex-col gap-2 border-b border-border bg-[#f7fbff] px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
-                Query 1
-              </Badge>
-              <label
-                className="text-sm text-muted-foreground"
-                htmlFor="entity-set"
-              >
-                Entity
-              </label>
-              <Select
-                value={selectedEntityName || undefined}
-                onValueChange={onSelectEntity}
-                disabled={entities.length === 0}
-              >
-                <SelectTrigger id="entity-set" className="min-w-56">
-                  <SelectValue placeholder="Select entity" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.name} value={entity.name}>
-                      {entity.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {templates.length > 0 ? (
-                <Select
-                  value={templateSelectValue}
-                  onValueChange={(value) => {
-                    setTemplateSelectValue(value);
-                    const template = templates.find(
-                      (item) => item.id === value,
-                    );
-
-                    if (template) {
-                      onApplyTemplate(template);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="min-w-48">
-                    <SelectValue placeholder="Load template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-            </div>
+            <div className="flex flex-wrap items-center gap-2"></div>
             <div className="flex items-center gap-2 lg:justify-end">
               {onOpenSavedQueries ? (
                 <Tooltip>

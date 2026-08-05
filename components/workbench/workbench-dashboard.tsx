@@ -440,7 +440,7 @@ export function WorkbenchDashboard() {
               Open SQL Workbench
             </Badge>
             <span className="text-muted-foreground">
-              {selectedEntityName || "No entity selected"}
+              {(queryText ? (/\bFROM\s+([A-Z0-9_./-]+)/i.exec(queryText)?.[1] ?? selectedEntityName) : selectedEntityName) || "No entity selected"}
             </span>
             <span className="text-muted-foreground">|</span>
             <span className="text-muted-foreground">
