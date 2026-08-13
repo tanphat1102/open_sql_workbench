@@ -216,17 +216,29 @@ export function BuilderFilterEditor({
               <SelectItem value="<=">&lt;=</SelectItem>
               <SelectItem value="LIKE">LIKE</SelectItem>
               <SelectItem value="BETWEEN">BETWEEN</SelectItem>
+              <SelectItem value="IN">IN ()</SelectItem>
+              <SelectItem value="NOT IN">NOT IN ()</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="min-w-0">
           <div className="text-[10px] text-muted-foreground mb-0.5">
-            {filter.operator === "BETWEEN" ? "From" : "Value"}
+            {filter.operator === "BETWEEN"
+              ? "From"
+              : filter.operator === "IN" || filter.operator === "NOT IN"
+                ? "Values (comma separated)"
+                : "Value"}
           </div>
           <Input
             value={filter.value}
             onChange={(event) => onUpdate({ value: event.target.value })}
-            placeholder={filter.operator === "BETWEEN" ? "From" : "Value"}
+            placeholder={
+              filter.operator === "BETWEEN"
+                ? "From"
+                : filter.operator === "IN" || filter.operator === "NOT IN"
+                  ? "e.g. AA, LH, DL"
+                  : "Value"
+            }
             className="h-6 text-[11px]"
           />
         </div>

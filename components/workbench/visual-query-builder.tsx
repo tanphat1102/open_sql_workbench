@@ -292,6 +292,21 @@ function formatWhereValue(value: string) {
   return `'${trimmedValue.replace(/'/g, "''")}'`;
 }
 
+function formatInValue(value: string): string {
+  let trimmed = value.trim();
+  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  const items = trimmed
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .map((item) => formatWhereValue(item));
+
+  if (items.length === 0) return "( )";
+  return `( ${items.join(", ")} )`;
+}
+
 function buildConditionClause(
   nodes: BuilderNode[],
   filters: BuilderFilter[],
@@ -318,10 +333,15 @@ function buildConditionClause(
         nodes.length > 1 && node
           ? `${node.alias}~${filter.field}`
           : filter.field;
-      const condition =
-        filter.operator === "BETWEEN"
-          ? `${fieldRef} BETWEEN ${formatWhereValue(filter.value)} AND ${formatWhereValue(filter.value2 ?? "")}`
-          : `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value)}`;
+
+      let condition = "";
+      if (filter.operator === "BETWEEN") {
+        condition = `${fieldRef} BETWEEN ${formatWhereValue(filter.value)} AND ${formatWhereValue(filter.value2 ?? "")}`;
+      } else if (filter.operator === "IN" || filter.operator === "NOT IN") {
+        condition = `${fieldRef} ${filter.operator} ${formatInValue(filter.value)}`;
+      } else {
+        condition = `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value)}`;
+      }
 
       return index === 0 ? condition : `${filter.conjunction} ${condition}`;
     });
