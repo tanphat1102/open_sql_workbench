@@ -30,7 +30,7 @@ export type BuilderFilter = {
   id: string;
   nodeId: string;
   field: string;
-  operator: "=" | "<>" | ">" | ">=" | "<" | "<=" | "LIKE" | "BETWEEN";
+  operator: "=" | "<>" | ">" | ">=" | "<" | "<=" | "LIKE" | "BETWEEN" | "IN" | "NOT IN";
   value: string;
   value2?: string;
   conjunction: "AND" | "OR";
