@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 
+import {
+  appendSapCookie,
+  buildTargetUrl,
+  normalizeSapBaseUrl,
+  toUtf8String,
+} from "@/lib/sapSessionUtils";
+
 type SapLoginErrorEnvelope = {
   error?: {
     message?:
@@ -29,68 +36,6 @@ function extractSapErrorMessage(payload: unknown): string {
   }
 
   return JSON.stringify(payload);
-}
-
-function appendSapCookies(
-  response: NextResponse,
-  setCookie: string[] | undefined,
-) {
-  if (!setCookie || setCookie.length === 0) {
-    return;
-  }
-
-  setCookie.forEach((cookieStr: string) => {
-    const [nameValue, ...attributes] = cookieStr.split(";");
-    const separatorIndex = nameValue.indexOf("=");
-
-    if (separatorIndex <= 0) {
-      return;
-    }
-
-    const name = nameValue.slice(0, separatorIndex).trim();
-    const value = nameValue.slice(separatorIndex + 1).trim();
-    const preservedAttributes = attributes
-      .map((attribute) => attribute.trim())
-      .filter((attribute) => {
-        const lowerAttribute = attribute.toLowerCase();
-        return (
-          attribute &&
-          !lowerAttribute.startsWith("domain=") &&
-          !lowerAttribute.startsWith("path=") &&
-          lowerAttribute !== "secure" &&
-          !lowerAttribute.startsWith("samesite=")
-        );
-      });
-
-    response.headers.append(
-      "Set-Cookie",
-      [`${name}=${value}`, "Path=/", "SameSite=Lax", ...preservedAttributes].join(
-        "; ",
-      ),
-    );
-  });
-}
-
-function toUtf8String(data: unknown) {
-  if (typeof data === "string") {
-    return data;
-  }
-
-  if (Buffer.isBuffer(data)) {
-    return data.toString("utf8");
-  }
-
-  if (data instanceof ArrayBuffer) {
-    return Buffer.from(data).toString("utf8");
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString(
-      "utf8",
-    );
-  }
-
-  return undefined;
 }
 
 function createLoginResponse({
@@ -127,28 +72,9 @@ function createLoginResponse({
     },
   );
 
-  appendSapCookies(response, setCookie);
+  setCookie?.forEach((cookieStr) => appendSapCookie(response, cookieStr));
 
   return response;
-}
-
-function normalizeSapBaseUrl(value: string) {
-  const trimmed = value.replace(/\/+$/, "");
-  return trimmed;
-}
-
-function buildTargetUrl(sapBaseUrl: string, targetPath: string) {
-  const normalizedBase = normalizeSapBaseUrl(sapBaseUrl);
-  const normalizedPath = targetPath.replace(/^\/+/, "");
-  const servicePrefix = "opu/odata/sap/";
-
-  const finalPath = normalizedBase.toLowerCase().endsWith("/sap/opu/odata/sap")
-    ? normalizedPath.startsWith(servicePrefix)
-      ? normalizedPath.slice(servicePrefix.length)
-      : normalizedPath
-    : normalizedPath;
-
-  return `${normalizedBase}/${finalPath}`;
 }
 
 function normalizeSapClient(value: unknown) {
