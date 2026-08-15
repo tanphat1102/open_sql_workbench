@@ -1,19 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Bookmark, Download, LoaderCircle, Wand2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VisualQueryBuilder } from "@/components/workbench/visual-query-builder";
 import { formatOpenSql } from "@/lib/openSqlFormatter";
 import { toast } from "@/lib/toast";
-import type { WorkbenchEntity, WorkbenchTemplate } from "@/types/workbench";
+import type { WorkbenchEntity } from "@/types/workbench";
 
 const SqlEditor = dynamic(
   () => import("./sql-editor").then((m) => m.SqlEditor),
@@ -37,11 +28,8 @@ type QueryWorkbenchProps = {
   selectedEntityName: string;
   entities: WorkbenchEntity[];
   queryText: string;
-  templates: WorkbenchTemplate[];
   isRunning: boolean;
   onQueryTextChange: (value: string) => void;
-  onSelectEntity: (entityName: string) => void;
-  onApplyTemplate: (template: WorkbenchTemplate) => void;
   onRunQuery: () => void;
   onOpenSavedQueries?: () => void;
   editorHeight?: string;
@@ -51,19 +39,12 @@ export function QueryWorkbench({
   selectedEntityName,
   entities = [],
   queryText,
-  templates = [],
   isRunning,
   onQueryTextChange,
-  onSelectEntity,
-  onApplyTemplate,
   onRunQuery,
   onOpenSavedQueries,
   editorHeight = "340px",
 }: QueryWorkbenchProps) {
-  const [templateSelectValue, setTemplateSelectValue] = useState<
-    string | undefined
-  >();
-
   function handleDownloadSql() {
     if (!queryText.trim()) return;
     const safeName = (selectedEntityName || "query").replace(
@@ -212,8 +193,6 @@ export function QueryWorkbench({
               className="min-h-0 flex-1 p-0 data-[state=inactive]:hidden"
             >
               <div className="h-full min-h-0 p-0">
-                {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-                {/* @ts-ignore */}
                 <SqlEditor
                   value={queryText}
                   onChange={(v: string) => onQueryTextChange(v)}

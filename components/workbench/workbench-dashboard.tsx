@@ -131,7 +131,6 @@ export function WorkbenchDashboard() {
     selectedEntity,
     selectedEntityName,
     entities,
-    templates,
     queryText,
     setQueryText,
     isRunning,
@@ -142,7 +141,6 @@ export function WorkbenchDashboard() {
     resultRows,
     previewingEntityName,
     handleEntityChange,
-    applyTemplate,
     runQuery,
     previewTable,
     loadResultPage,
@@ -610,11 +608,8 @@ export function WorkbenchDashboard() {
                 selectedEntityName={selectedEntityName}
                 entities={entities}
                 queryText={queryText}
-                templates={templates}
                 isRunning={isRunning}
                 onQueryTextChange={setQueryText}
-                onSelectEntity={handleEntityChange}
-                onApplyTemplate={applyTemplate}
                 onRunQuery={executeAndShowResults}
                 onOpenSavedQueries={() => setShowSavedQueriesDialog(true)}
                 editorHeight="100%"
