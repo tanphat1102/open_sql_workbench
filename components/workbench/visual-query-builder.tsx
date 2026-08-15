@@ -43,6 +43,7 @@ import { BuilderNodeCard } from "@/components/workbench/builder-node-card";
 import { BuilderJoinEditor } from "@/components/workbench/builder-join-editor";
 import { BuilderFilterEditor } from "@/components/workbench/builder-filter-editor";
 import { TablePropertiesDialog } from "@/components/workbench/table-properties-dialog";
+import { formatWhereValue, formatInValue } from "@/lib/builderFilterUtils";
 
 const nodeWidth = 220;
 const nodeAnchorOffsetY = 74;
@@ -278,39 +279,13 @@ function hasDuplicateAliases(nodes: BuilderNode[]) {
   );
 }
 
-function formatWhereValue(value: string) {
-  const trimmedValue = value.trim();
 
-  if (/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
-    return trimmedValue;
-  }
-
-  if (trimmedValue.startsWith("'") && trimmedValue.endsWith("'")) {
-    return trimmedValue;
-  }
-
-  return `'${trimmedValue.replace(/'/g, "''")}'`;
-}
-
-function formatInValue(value: string): string {
-  let trimmed = value.trim();
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
-    trimmed = trimmed.slice(1, -1).trim();
-  }
-  const items = trimmed
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .map((item) => formatWhereValue(item));
-
-  if (items.length === 0) return "( )";
-  return `( ${items.join(", ")} )`;
-}
 
 function buildConditionClause(
   nodes: BuilderNode[],
   filters: BuilderFilter[],
   clause: "WHERE" | "HAVING",
+  fieldsByEntity: Record<string, SapSqlwbField[]> = {},
 ) {
   const clauseFilters = filters.filter((f) => {
     const isAgg = /\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(f.field);
@@ -329,6 +304,12 @@ function buildConditionClause(
     })
     .map((filter, index) => {
       const node = nodes.find((item) => item.id === filter.nodeId);
+      const nodeFields = node ? (fieldsByEntity[node.entityName] ?? []) : [];
+      const normFilterField = normalizeFieldName(filter.field);
+      const fieldObj = nodeFields.find(
+        (f) => getFieldName(f) === normFilterField,
+      );
+
       const fieldRef =
         nodes.length > 1 && node
           ? `${node.alias}~${filter.field}`
@@ -336,11 +317,11 @@ function buildConditionClause(
 
       let condition = "";
       if (filter.operator === "BETWEEN") {
-        condition = `${fieldRef} BETWEEN ${formatWhereValue(filter.value)} AND ${formatWhereValue(filter.value2 ?? "")}`;
+        condition = `${fieldRef} BETWEEN ${formatWhereValue(filter.value, fieldObj)} AND ${formatWhereValue(filter.value2 ?? "", fieldObj)}`;
       } else if (filter.operator === "IN" || filter.operator === "NOT IN") {
-        condition = `${fieldRef} ${filter.operator} ${formatInValue(filter.value)}`;
+        condition = `${fieldRef} ${filter.operator} ${formatInValue(filter.value, fieldObj)}`;
       } else {
-        condition = `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value)}`;
+        condition = `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value, fieldObj)}`;
       }
 
       return index === 0 ? condition : `${filter.conjunction} ${condition}`;
@@ -349,8 +330,12 @@ function buildConditionClause(
   return conditions.length > 0 ? `${clause} ${conditions.join("\n")}` : "";
 }
 
-function buildWhereClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
-  return buildConditionClause(nodes, filters, "WHERE");
+function buildWhereClause(
+  nodes: BuilderNode[],
+  filters: BuilderFilter[],
+  fieldsByEntity: Record<string, SapSqlwbField[]> = {},
+) {
+  return buildConditionClause(nodes, filters, "WHERE", fieldsByEntity);
 }
 
 function buildGroupByClause(
@@ -392,14 +377,19 @@ function buildGroupByClause(
     : "";
 }
 
-function buildHavingClause(nodes: BuilderNode[], filters: BuilderFilter[]) {
-  return buildConditionClause(nodes, filters, "HAVING");
+function buildHavingClause(
+  nodes: BuilderNode[],
+  filters: BuilderFilter[],
+  fieldsByEntity: Record<string, SapSqlwbField[]> = {},
+) {
+  return buildConditionClause(nodes, filters, "HAVING", fieldsByEntity);
 }
 
 function buildSql(
   nodes: BuilderNode[],
   joins: BuilderJoin[],
   filters: BuilderFilter[],
+  fieldsByEntity: Record<string, SapSqlwbField[]> = {},
 ) {
   if (nodes.length === 0) {
     return "";
@@ -409,9 +399,9 @@ function buildSql(
     return [
       `SELECT ${buildSelectList(nodes)}`,
       `FROM ${nodes[0].entityName}`,
-      buildWhereClause(nodes, filters),
+      buildWhereClause(nodes, filters, fieldsByEntity),
       buildGroupByClause(nodes, filters),
-      buildHavingClause(nodes, filters),
+      buildHavingClause(nodes, filters, fieldsByEntity),
       buildOrderByClause(nodes),
     ]
       .filter(Boolean)
@@ -441,7 +431,7 @@ function buildSql(
     );
   }
 
-  const whereClause = buildWhereClause(nodes, filters);
+  const whereClause = buildWhereClause(nodes, filters, fieldsByEntity);
 
   if (whereClause) {
     lines.push(whereClause);
@@ -453,7 +443,7 @@ function buildSql(
     lines.push(groupByClause);
   }
 
-  const havingClause = buildHavingClause(nodes, filters);
+  const havingClause = buildHavingClause(nodes, filters, fieldsByEntity);
 
   if (havingClause) {
     lines.push(havingClause);
@@ -657,8 +647,8 @@ export function VisualQueryBuilder({
     [effectiveJoins, fieldsByEntity, nodes],
   );
   const generatedSql = useMemo(
-    () => buildSql(nodes, effectiveJoins, filters),
-    [effectiveJoins, filters, nodes],
+    () => buildSql(nodes, effectiveJoins, filters, fieldsByEntity),
+    [effectiveJoins, fieldsByEntity, filters, nodes],
   );
 
   // ponytail: fields auto-loaded by useQueries above, no manual ensureFields needed
