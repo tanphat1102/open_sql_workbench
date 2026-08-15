@@ -10,7 +10,6 @@ import { toast } from "@/lib/toast";
 import type {
   WorkbenchActivity,
   WorkbenchColumn,
-  WorkbenchDebugResponse,
   WorkbenchPageInfo,
   WorkbenchRow,
   WorkbenchTemplate,
@@ -78,7 +77,6 @@ type ResultSource =
 
 type ResultPageCacheEntry = {
   rows: WorkbenchRow[];
-  debugResponses: WorkbenchDebugResponse[];
   pageInfo: WorkbenchPageInfo;
 };
 
@@ -111,9 +109,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
   const [activeTemplateId, setActiveTemplateId] = useState("");
   const [resultRows, setResultRows] = useState<WorkbenchRow[]>([]);
   const [resultColumns, setResultColumns] = useState<WorkbenchColumn[]>([]);
-  const [resultDebugResponses, setResultDebugResponses] = useState<
-    WorkbenchDebugResponse[]
-  >([]);
   const [resultPageInfo, setResultPageInfo] = useState<WorkbenchPageInfo>(
     buildLocalPageInfo([]),
   );
@@ -225,7 +220,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     const nextRows = rowsByEntity[entityName] ?? [];
     setResultRows(nextRows);
     setResultColumns(buildFallbackColumns(nextRows));
-    setResultDebugResponses([]);
     setResultPageInfo(buildLocalPageInfo(nextRows));
   }
 
@@ -248,7 +242,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     cacheKey: string,
     pageInfo: WorkbenchPageInfo,
     rows: WorkbenchRow[],
-    debugResponses: WorkbenchDebugResponse[],
   ) {
     if (!cacheKey || pageInfo.page < 1) {
       return;
@@ -256,7 +249,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
 
     pageCacheRef.current.set(getResultPageCacheKey(cacheKey, pageInfo.page), {
       rows,
-      debugResponses,
       pageInfo,
     });
   }
@@ -265,7 +257,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     execution: {
       entitySetName: string;
       columns: WorkbenchColumn[];
-      debugResponses: WorkbenchDebugResponse[];
       isCountQuery: boolean;
       pageInfo: WorkbenchPageInfo;
       queryPath: string;
@@ -297,12 +288,7 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
       queryPath: execution.queryPath,
       isCountQuery: execution.isCountQuery,
     };
-    cacheResultPage(
-      cacheKey,
-      execution.pageInfo,
-      execution.rows,
-      execution.debugResponses,
-    );
+    cacheResultPage(cacheKey, execution.pageInfo, execution.rows);
   }
 
   function prefetchResultPage(context: ResultContext, page: number) {
@@ -341,12 +327,7 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
           return;
         }
 
-        cacheResultPage(
-          context.cacheKey,
-          execution.pageInfo,
-          execution.rows,
-          execution.debugResponses,
-        );
+        cacheResultPage(context.cacheKey, execution.pageInfo, execution.rows);
       })
       .catch(() => {
         // Prefetch is opportunistic. User-triggered navigation will retry.
@@ -364,7 +345,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     onMutate: () => {
       // Clear stale results so user sees loading state, not old cached data
       setResultRows([]);
-      setResultDebugResponses([]);
       resultContextRef.current = null;
       pageCacheRef.current.clear();
     },
@@ -374,7 +354,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
           onProgress: (progress) => {
             setResultRows(progress.rows);
             setResultColumns(progress.columns);
-            setResultDebugResponses(progress.debugResponses);
             setResultPageInfo(progress.pageInfo);
             setResultSource({ type: "preview", entityName });
             setSelectedEntityName(progress.entitySetName);
@@ -390,7 +369,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
           onProgress: (progress) => {
             setResultRows(progress.rows);
             setResultColumns(progress.columns);
-            setResultDebugResponses(progress.debugResponses);
             setResultPageInfo(progress.pageInfo);
             setResultSource({ type: "query" });
             setSelectedEntityName(progress.entitySetName);
@@ -401,7 +379,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     onSuccess: (execution, vars) => {
       setResultRows(execution.rows);
       setResultColumns(execution.columns);
-      setResultDebugResponses(execution.debugResponses);
       setResultPageInfo(execution.pageInfo);
       setResultSource(
         vars.type === "preview"
@@ -553,7 +530,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
     if (cachedPage) {
       setResultRows(cachedPage.rows);
       setResultColumns(context.columns);
-      setResultDebugResponses(cachedPage.debugResponses);
       setResultPageInfo(cachedPage.pageInfo);
       prefetchResultPage(context, page + 1);
       return;
@@ -579,7 +555,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
 
                     setResultRows(progress.rows);
                     setResultColumns(progress.columns);
-                    setResultDebugResponses(progress.debugResponses);
                     setResultPageInfo(progress.pageInfo);
                   },
                 },
@@ -598,7 +573,6 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
 
                     setResultRows(progress.rows);
                     setResultColumns(progress.columns);
-                    setResultDebugResponses(progress.debugResponses);
                     setResultPageInfo(progress.pageInfo);
                   },
                 },
@@ -610,15 +584,9 @@ export function useWorkbench({ enabled = true }: { enabled?: boolean } = {}) {
 
         setResultRows(execution.rows);
         setResultColumns(execution.columns);
-        setResultDebugResponses(execution.debugResponses);
         setResultPageInfo(execution.pageInfo);
         setResultContext(execution, context.source);
-        cacheResultPage(
-          context.cacheKey,
-          execution.pageInfo,
-          execution.rows,
-          execution.debugResponses,
-        );
+        cacheResultPage(context.cacheKey, execution.pageInfo, execution.rows);
         const nextContext = resultContextRef.current;
         if (nextContext) {
           prefetchResultPage(nextContext, page + 1);

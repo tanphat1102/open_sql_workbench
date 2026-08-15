@@ -29,19 +29,6 @@ type SapClientError = Error & {
   body: unknown;
 };
 
-type SapRawJsonResult<T> = {
-  data: T;
-  text: string;
-  path: string;
-  status: number;
-  contentLength: string;
-  upstreamContentLength: string;
-  upstreamContentType: string;
-  proxyBytes: string;
-  receivedChars: number;
-  receivedBytes: number;
-};
-
 function getNestedValue(source: unknown, path: string[]) {
   return path.reduce<unknown>((current, key) => {
     if (current && typeof current === "object" && key in current) {
@@ -169,27 +156,6 @@ export const sapClient = {
     return parseJsonResponse<T>(response);
   },
 
-  requestText: async (path: string, init?: RequestInit) => {
-    const response = await fetch(buildSapUrl(path), {
-      ...init,
-      headers: {
-        Accept: "application/xml, text/xml, */*",
-        ...(init?.headers ?? {}),
-      },
-    });
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw createSapClientError(
-        text || "SAP service request failed",
-        response.status,
-        text,
-      );
-    }
-
-    return text;
-  },
-
   requestRawJson: async <T>(path: string, init?: RequestInit) => {
     const response = await fetch(buildSapUrl(path), {
       ...init,
@@ -207,17 +173,6 @@ export const sapClient = {
       response.headers.get("x-oswb-upstream-content-type") ?? "";
     const proxyBytes = response.headers.get("x-oswb-proxy-bytes") ?? "";
     const receivedBytes = new TextEncoder().encode(text).length;
-
-    console.log("SAP raw JSON response", {
-      path,
-      status: response.status,
-      contentLength,
-      upstreamContentLength,
-      upstreamContentType,
-      proxyBytes,
-      receivedChars: text.length,
-      receivedBytes,
-    });
 
     let data: unknown;
 
@@ -250,28 +205,11 @@ export const sapClient = {
       );
     }
 
-    return {
-      data: data as T,
-      text,
-      path,
-      status: response.status,
-      contentLength,
-      upstreamContentLength,
-      upstreamContentType,
-      proxyBytes,
-      receivedChars: text.length,
-      receivedBytes,
-    } satisfies SapRawJsonResult<T>;
+    return data as T;
   },
 
   fetchCollection: async <T>(path: string, init?: RequestInit) => {
     const data = await sapClient.request<SapODataEnvelope<T>>(path, init);
     return formatODataResults(data) as T[];
-  },
-
-  fetchEntity: async <T>(path: string, init?: RequestInit) => {
-    const data = await sapClient.request<{ d?: T }>(path, init);
-    console.log("sapClient fetch data type:", typeof data);
-    return formatODataResults(data) as T;
   },
 };

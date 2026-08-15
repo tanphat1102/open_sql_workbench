@@ -1,7 +1,6 @@
 import type {
   WorkbenchActivity,
   WorkbenchColumn,
-  WorkbenchDebugResponse,
   WorkbenchEntity,
   WorkbenchMetric,
   WorkbenchPageInfo,
@@ -60,7 +59,6 @@ type WorkbenchQueryExecution = {
   entitySetName: string;
   columns: WorkbenchColumn[];
   rows: WorkbenchRow[];
-  debugResponses: WorkbenchDebugResponse[];
   queryPath: string;
   isCountQuery: boolean;
   pageInfo: WorkbenchPageInfo;
@@ -332,40 +330,6 @@ function getODataResults<T>(payload: SapODataEnvelope<T>) {
   return payload.d?.results ?? [];
 }
 
-function createDebugResponse({
-  label,
-  summary,
-  response,
-}: {
-  label: string;
-  summary: string;
-  response: {
-    path: string;
-    text: string;
-    status: number;
-    contentLength: string;
-    upstreamContentLength: string;
-    upstreamContentType: string;
-    proxyBytes: string;
-    receivedChars: number;
-    receivedBytes: number;
-  };
-}): WorkbenchDebugResponse {
-  return {
-    label,
-    path: response.path,
-    status: response.status,
-    contentLength: response.contentLength,
-    upstreamContentLength: response.upstreamContentLength,
-    upstreamContentType: response.upstreamContentType,
-    proxyBytes: response.proxyBytes,
-    receivedChars: response.receivedChars,
-    receivedBytes: response.receivedBytes,
-    summary,
-    body: response.text,
-  };
-}
-
 function buildFallbackColumns(rows: WorkbenchRow[]): WorkbenchColumn[] {
   return Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).map(
     (key, index) => ({
@@ -531,34 +495,20 @@ async function loadResultColumnBatch(
   const response = await sapClient.requestRawJson<
     SapODataEnvelope<SapSqlwbColumn>
   >(buildColumnSetPath(resultId, options));
-  const columns = getODataResults(response.data);
 
-  return {
-    columns,
-    debugResponse: createDebugResponse({
-      label: `SqlwbColumnSet skip ${options.skip}`,
-      summary: `Column rows: ${columns.length}`,
-      response,
-    }),
-  };
+  return getODataResults(response);
 }
 
 async function loadResultColumns(resultId: string) {
   const columnBatchSize = 100;
   const maxColumnBatches = 100;
   const columns: SapSqlwbColumn[] = [];
-  const debugResponses: WorkbenchDebugResponse[] = [];
 
   for (let batchIndex = 0; batchIndex < maxColumnBatches; batchIndex += 1) {
-    const { columns: batch, debugResponse } = await loadResultColumnBatch(
-      resultId,
-      {
-        top: columnBatchSize,
-        skip: batchIndex * columnBatchSize,
-      },
-    );
-
-    debugResponses.push(debugResponse);
+    const batch = await loadResultColumnBatch(resultId, {
+      top: columnBatchSize,
+      skip: batchIndex * columnBatchSize,
+    });
 
     if (batch.length === 0) {
       break;
@@ -573,7 +523,6 @@ async function loadResultColumns(resultId: string) {
 
   return {
     columns,
-    debugResponses,
   };
 }
 
@@ -589,18 +538,8 @@ async function loadPageChunkBatch(
   const response = await sapClient.requestRawJson<
     SapODataEnvelope<SapSqlwbPageChunk>
   >(buildPageChunkSetPath(resultId, page, options));
-  const chunks = getODataResults(response.data);
 
-  return {
-    chunks,
-    debugResponse: createDebugResponse({
-      label: `SqlwbPageChunkSet skip ${options.skip}`,
-      summary: `Chunk rows: ${chunks.length}. Last chunk in batch: ${
-        hasLastChunk(chunks) ? "yes" : "no"
-      }`,
-      response,
-    }),
-  };
+  return getODataResults(response);
 }
 
 async function loadResultRows(
@@ -609,7 +548,6 @@ async function loadResultRows(
   options: {
     onPartialRows?: (progress: {
       rows: WorkbenchRow[];
-      debugResponses: WorkbenchDebugResponse[];
       loadedChunkCount: number;
       isFinal: boolean;
     }) => void;
@@ -618,18 +556,12 @@ async function loadResultRows(
   const chunkBatchSize = 100;
   const maxChunkBatches = 1000;
   const chunks: SapSqlwbPageChunk[] = [];
-  const debugResponses: WorkbenchDebugResponse[] = [];
 
   for (let batchIndex = 0; batchIndex < maxChunkBatches; batchIndex += 1) {
-    const { chunks: batch, debugResponse } = await loadPageChunkBatch(
-      resultId,
-      page,
-      {
-        top: chunkBatchSize,
-        skip: batchIndex * chunkBatchSize,
-      },
-    );
-    debugResponses.push(debugResponse);
+    const batch = await loadPageChunkBatch(resultId, page, {
+      top: chunkBatchSize,
+      skip: batchIndex * chunkBatchSize,
+    });
 
     if (batch.length === 0) {
       break;
@@ -646,7 +578,6 @@ async function loadResultRows(
     if (partialRows) {
       options.onPartialRows?.({
         rows: partialRows,
-        debugResponses: [...debugResponses],
         loadedChunkCount: chunks.length,
         isFinal: isFinalBatch,
       });
@@ -657,17 +588,9 @@ async function loadResultRows(
     }
   }
 
-  console.log("SAP page chunks loaded", {
-    resultId,
-    page,
-    chunkCount: chunks.length,
-    hasLastChunk: hasLastChunk(chunks),
-  });
-
   if (chunks.length === 0) {
     return {
       rows: [] as WorkbenchRow[],
-      debugResponses,
     };
   }
 
@@ -675,7 +598,6 @@ async function loadResultRows(
 
   return {
     rows: parseRowsJson(rowsJson),
-    debugResponses,
   };
 }
 
@@ -726,36 +648,24 @@ async function executeLiveRunQuery(
   }
 
   const reusedColumns = options.reuseColumns;
-  const { columns: sapColumns, debugResponses: columnDebugResponses } =
-    reusedColumns
-      ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
-      : await loadResultColumns(resultId);
+  const { columns: sapColumns } = reusedColumns
+    ? { columns: [] as SapSqlwbColumn[] }
+    : await loadResultColumns(resultId);
   const entitySetName = result.ObjectName || queryPlan.entitySetName;
-  const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
-    resultId,
-    page,
-    {
-      onPartialRows: (progress) => {
-        const partialDebugResponses = [
-          ...columnDebugResponses,
-          ...progress.debugResponses,
-        ];
-
-        options.onProgress?.({
-          entitySetName,
-          columns: reusedColumns ?? normalizeColumns(sapColumns, progress.rows),
-          rows: progress.rows,
-          debugResponses: partialDebugResponses,
-          queryPath,
-          isCountQuery: queryPlan.isCountQuery,
-          pageInfo: buildPageInfo(result, progress.rows.length),
-          isFinal: progress.isFinal,
-          loadedChunkCount: progress.loadedChunkCount,
-        });
-      },
+  const { rows } = await loadResultRows(resultId, page, {
+    onPartialRows: (progress) => {
+      options.onProgress?.({
+        entitySetName,
+        columns: reusedColumns ?? normalizeColumns(sapColumns, progress.rows),
+        rows: progress.rows,
+        queryPath,
+        isCountQuery: queryPlan.isCountQuery,
+        pageInfo: buildPageInfo(result, progress.rows.length),
+        isFinal: progress.isFinal,
+        loadedChunkCount: progress.loadedChunkCount,
+      });
     },
-  );
-  const debugResponses = [...columnDebugResponses, ...chunkDebugResponses];
+  });
   const columns = reusedColumns ?? normalizeColumns(sapColumns, rows);
   const pageInfo = buildPageInfo(result, rows.length);
 
@@ -763,7 +673,6 @@ async function executeLiveRunQuery(
     entitySetName,
     columns,
     rows,
-    debugResponses,
     queryPath,
     isCountQuery: queryPlan.isCountQuery,
     pageInfo,
@@ -797,43 +706,30 @@ async function executeLivePreviewTable(
 
   const page = Math.max(1, normalizeNumber(result.Page, pageNumber));
   const reusedColumns = options.reuseColumns;
-  const { columns: sapColumns, debugResponses: columnDebugResponses } =
-    reusedColumns
-      ? { columns: [] as SapSqlwbColumn[], debugResponses: [] }
-      : await loadResultColumns(resultId);
+  const { columns: sapColumns } = reusedColumns
+    ? { columns: [] as SapSqlwbColumn[] }
+    : await loadResultColumns(resultId);
   const entitySetName = result.ObjectName || objectName;
-  const { rows, debugResponses: chunkDebugResponses } = await loadResultRows(
-    resultId,
-    page,
-    {
-      onPartialRows: (progress) => {
-        const partialDebugResponses = [
-          ...columnDebugResponses,
-          ...progress.debugResponses,
-        ];
-
-        options.onProgress?.({
-          entitySetName,
-          columns: reusedColumns ?? normalizeColumns(sapColumns, progress.rows),
-          rows: progress.rows,
-          debugResponses: partialDebugResponses,
-          queryPath,
-          isCountQuery: false,
-          pageInfo: buildPageInfo(result, progress.rows.length),
-          isFinal: progress.isFinal,
-          loadedChunkCount: progress.loadedChunkCount,
-        });
-      },
+  const { rows } = await loadResultRows(resultId, page, {
+    onPartialRows: (progress) => {
+      options.onProgress?.({
+        entitySetName,
+        columns: reusedColumns ?? normalizeColumns(sapColumns, progress.rows),
+        rows: progress.rows,
+        queryPath,
+        isCountQuery: false,
+        pageInfo: buildPageInfo(result, progress.rows.length),
+        isFinal: progress.isFinal,
+        loadedChunkCount: progress.loadedChunkCount,
+      });
     },
-  );
-  const debugResponses = [...columnDebugResponses, ...chunkDebugResponses];
+  });
   const pageInfo = buildPageInfo(result, rows.length);
 
   return {
     entitySetName,
     columns: reusedColumns ?? normalizeColumns(sapColumns, rows),
     rows,
-    debugResponses,
     queryPath,
     isCountQuery: false,
     pageInfo,
@@ -872,7 +768,6 @@ export async function executeWorkbenchQuery(
       entitySetName: queryPlan.entitySetName,
       columns: buildFallbackColumns(countRows),
       rows: countRows,
-      debugResponses: [],
       queryPath: buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
       isCountQuery: true,
       pageInfo: {
@@ -897,7 +792,6 @@ export async function executeWorkbenchQuery(
     entitySetName: queryPlan.entitySetName,
     columns: buildFallbackColumns(normalizedRows),
     rows: normalizedRows,
-    debugResponses: [],
     queryPath: buildQueryPath(queryPlan.entitySetName, queryPlan.queryParams),
     isCountQuery: false,
     pageInfo: {

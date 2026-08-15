@@ -56,20 +56,6 @@ export type WorkbenchActivity = {
   tone: "success" | "info" | "warning" | "error";
 };
 
-export type WorkbenchDebugResponse = {
-  label: string;
-  path: string;
-  status: number;
-  contentLength: string;
-  upstreamContentLength: string;
-  upstreamContentType: string;
-  proxyBytes: string;
-  receivedChars: number;
-  receivedBytes: number;
-  summary: string;
-  body: string;
-};
-
 export type WorkbenchSnapshot = {
   metrics: WorkbenchMetric[];
   entities: WorkbenchEntity[];
