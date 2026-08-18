@@ -437,7 +437,7 @@ export function ResultsTable({
   }, [visibleRows.length, isLoading]);
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={400}>
       <Card className="fiori-surface h-full min-h-0 gap-0 py-0">
         <CardHeader className="border-b border-border px-3 py-2">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">

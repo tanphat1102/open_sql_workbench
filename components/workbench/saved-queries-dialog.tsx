@@ -5,6 +5,8 @@ import {
   Bookmark,
   Download,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   Pencil,
   Play,
   Search,
@@ -13,6 +15,13 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -112,6 +121,7 @@ export function SavedQueriesDialog({
   const [editingQueryId, setEditingQueryId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   function matchSearch(q: SapSqlwbSavedQuery, query: string) {
     if (!query) return true;
@@ -280,9 +290,16 @@ export function SavedQueriesDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex max-h-[80vh] max-w-2xl flex-col gap-0 overflow-hidden p-0"
+    <TooltipProvider delayDuration={400}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className={cn(
+          "flex flex-col gap-0 overflow-hidden p-0 transition-all duration-200",
+          isFullscreen
+            ? "h-[92vh] w-[95vw] max-w-none"
+            : "max-h-[80vh] max-w-2xl",
+        )}
         showCloseButton={false}
       >
         <DialogHeader className="border-b border-border bg-[#f7fbff] px-5 py-3">
@@ -317,6 +334,27 @@ export function SavedQueriesDialog({
                   {showSaveForm ? "Cancel" : "Save Current"}
                 </Button>
               ) : null}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreen((v) => !v)}
+                    className="rounded-md border border-border bg-white p-2 text-primary transition hover:bg-accent"
+                    aria-label={
+                      isFullscreen ? "Exit fullscreen" : "Open fullscreen"
+                    }
+                  >
+                    {isFullscreen ? (
+                      <Minimize2 className="size-4" />
+                    ) : (
+                      <Maximize2 className="size-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                </TooltipContent>
+              </Tooltip>
               <Button
                 type="button"
                 variant="outline"
@@ -769,6 +807,7 @@ export function SavedQueriesDialog({
           </div>
         ) : null}
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </TooltipProvider>
   );
 }

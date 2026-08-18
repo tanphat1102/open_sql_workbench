@@ -8,6 +8,8 @@ import {
   ChevronRight,
   Eye,
   Info,
+  Maximize2,
+  Minimize2,
   Search,
   X,
 } from "lucide-react";
@@ -15,6 +17,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +49,7 @@ type TablePropertiesDialogProps = {
   entityDescription?: string;
   onPreviewFields?: (fieldNames: string[]) => void;
   selectionMode?: boolean;
+  extraFields?: SapSqlwbField[];
 };
 
 function normalizeNumber(value: string | number | undefined, fallback = 0) {
@@ -119,6 +129,7 @@ export function TablePropertiesDialog({
   entityDescription,
   onPreviewFields,
   selectionMode,
+  extraFields,
 }: TablePropertiesDialogProps) {
   const [fields, setFields] = useState<SapSqlwbField[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -130,6 +141,7 @@ export function TablePropertiesDialog({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
   );
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     if (!open || !entityName) return;
@@ -143,7 +155,24 @@ export function TablePropertiesDialog({
       try {
         const result = await sqlAssistService.getFields(entityName);
         if (isMounted) {
-          setFields(result);
+          const combined =
+            extraFields && extraFields.length > 0
+              ? (() => {
+                  const existing = new Set(
+                    result.map((f) =>
+                      (f.FieldName ?? f.JsonKey ?? "").toUpperCase(),
+                    ),
+                  );
+                  const extras = extraFields.filter(
+                    (ef) =>
+                      !existing.has(
+                        (ef.FieldName ?? ef.JsonKey ?? "").toUpperCase(),
+                      ),
+                  );
+                  return [...extras, ...result];
+                })()
+              : result;
+          setFields(combined);
           setSelectedFields(new Set());
           setCollapsedGroups(new Set());
           setSearchQuery("");
@@ -157,7 +186,7 @@ export function TablePropertiesDialog({
               ? err.message
               : "Failed to load field metadata for this table.",
           );
-          setFields([]);
+          setFields(extraFields || []);
         }
       } finally {
         if (isMounted) setIsLoading(false);
@@ -168,7 +197,7 @@ export function TablePropertiesDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, entityName]);
+  }, [open, entityName, extraFields]);
 
   /* Tách direct fields và groups, sắp xếp theo tầng */
   const { directFields, groups } = useMemo(() => {
@@ -317,40 +346,70 @@ export function TablePropertiesDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex max-h-[85vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
-        showCloseButton={false}
-      >
-        {/* Header */}
-        <DialogHeader className="border-b border-border bg-[#f7fbff] px-5 py-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <DialogTitle className="flex items-center gap-2 text-base text-foreground">
-                <Info className="size-4 text-primary" />
-                <span className="truncate">{entityName}</span>
-                <Badge
+    <TooltipProvider delayDuration={400}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className={cn(
+            "flex flex-col gap-0 overflow-hidden p-0 transition-all duration-200",
+            isFullscreen
+              ? "h-[95vh] w-[95vw] max-w-none"
+              : "max-h-[85vh] max-w-5xl",
+          )}
+          showCloseButton={false}
+        >
+          {/* Header */}
+          <DialogHeader className="border-b border-border bg-[#f7fbff] px-5 py-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <DialogTitle className="flex items-center gap-2 text-base text-foreground">
+                  <Info className="size-4 text-primary" />
+                  <span className="truncate">{entityName}</span>
+                  <Badge
+                    variant="outline"
+                    className="border-[#b8d6ef] text-primary"
+                  >
+                    {entityType}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="mt-0.5 text-xs">
+                  {entityDescription || `Field schema for ${entityName}`}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setIsFullscreen((v) => !v)}
+                      className="rounded-md border border-border bg-white p-2 text-primary transition hover:bg-accent"
+                      aria-label={
+                        isFullscreen ? "Exit fullscreen" : "Open fullscreen"
+                      }
+                    >
+                      {isFullscreen ? (
+                        <Minimize2 className="size-4" />
+                      ) : (
+                        <Maximize2 className="size-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                  </TooltipContent>
+                </Tooltip>
+                <Button
+                  type="button"
                   variant="outline"
-                  className="border-[#b8d6ef] text-primary"
+                  size="sm"
+                  onClick={() => onOpenChange(false)}
+                  className="border-border text-muted-foreground hover:text-foreground"
                 >
-                  {entityType}
-                </Badge>
-              </DialogTitle>
-              <DialogDescription className="mt-0.5 text-xs">
-                {entityDescription || `Field schema for ${entityName}`}
-              </DialogDescription>
+                  Close
+                </Button>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="shrink-0 border-border text-muted-foreground hover:text-foreground"
-            >
-              Close
-            </Button>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
 
         {/* Loading state */}
         {isLoading ? (
@@ -826,6 +885,7 @@ export function TablePropertiesDialog({
           </div>
         ) : null}
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </TooltipProvider>
   );
 }
