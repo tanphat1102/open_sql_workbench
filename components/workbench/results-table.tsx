@@ -165,8 +165,13 @@ export function ResultsTable({
   const [viewportHeight, setViewportHeight] = useState(480);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const headerDragRef = useRef<HeaderDragState | null>(null);
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
-  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: "asc" | "desc";
+  } | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>(
+    {},
+  );
   // Reset filters/sort when entity changes (new query, different columns)
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -191,10 +196,18 @@ export function ResultsTable({
 
   function handleSort(key: string) {
     let direction: "asc" | "desc" = "asc";
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
+    if (
+      sortConfig &&
+      sortConfig.key === key &&
+      sortConfig.direction === "asc"
+    ) {
       direction = "desc";
     }
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === "desc") {
+    if (
+      sortConfig &&
+      sortConfig.key === key &&
+      sortConfig.direction === "desc"
+    ) {
       setSortConfig(null);
       return;
     }
@@ -219,18 +232,32 @@ export function ResultsTable({
       if (normalizedFilter) {
         rowEntries = rowEntries.filter(({ row }) => {
           const val = row[colKey];
-          
+
           if (typeof val === "boolean") {
-            return normalizedFilter === "all" ? true : normalizedFilter === "true" ? val : !val;
+            return normalizedFilter === "all"
+              ? true
+              : normalizedFilter === "true"
+                ? val
+                : !val;
           }
 
-          if (typeof val === "number" || (typeof val === "string" && !isNaN(Number(val)) && val.trim() !== "")) {
-             const numVal = Number(val);
-             if (normalizedFilter.startsWith(">=")) return numVal >= parseFloat(normalizedFilter.slice(2));
-             if (normalizedFilter.startsWith("<=")) return numVal <= parseFloat(normalizedFilter.slice(2));
-             if (normalizedFilter.startsWith(">")) return numVal > parseFloat(normalizedFilter.slice(1));
-             if (normalizedFilter.startsWith("<")) return numVal < parseFloat(normalizedFilter.slice(1));
-             if (normalizedFilter.startsWith("=")) return numVal === parseFloat(normalizedFilter.slice(1));
+          if (
+            typeof val === "number" ||
+            (typeof val === "string" &&
+              !isNaN(Number(val)) &&
+              val.trim() !== "")
+          ) {
+            const numVal = Number(val);
+            if (normalizedFilter.startsWith(">="))
+              return numVal >= parseFloat(normalizedFilter.slice(2));
+            if (normalizedFilter.startsWith("<="))
+              return numVal <= parseFloat(normalizedFilter.slice(2));
+            if (normalizedFilter.startsWith(">"))
+              return numVal > parseFloat(normalizedFilter.slice(1));
+            if (normalizedFilter.startsWith("<"))
+              return numVal < parseFloat(normalizedFilter.slice(1));
+            if (normalizedFilter.startsWith("="))
+              return numVal === parseFloat(normalizedFilter.slice(1));
           }
 
           const strVal = formatCellValue(val).toLowerCase();
@@ -243,7 +270,7 @@ export function ResultsTable({
       rowEntries.sort((a, b) => {
         const valA = a.row[sortConfig.key];
         const valB = b.row[sortConfig.key];
-        
+
         let comparison = 0;
         if (valA === null || valA === undefined) comparison = 1;
         else if (valB === null || valB === undefined) comparison = -1;
@@ -254,24 +281,29 @@ export function ResultsTable({
         } else {
           const strA = String(valA);
           const strB = String(valB);
-          
+
           if (strA.startsWith("/Date(") && strB.startsWith("/Date(")) {
-             const dateA = parseSapDate(strA);
-             const dateB = parseSapDate(strB);
-             if (dateA && dateB) {
-                comparison = dateA.getTime() - dateB.getTime();
-             } else {
-                comparison = strA.localeCompare(strB);
-             }
+            const dateA = parseSapDate(strA);
+            const dateB = parseSapDate(strB);
+            if (dateA && dateB) {
+              comparison = dateA.getTime() - dateB.getTime();
+            } else {
+              comparison = strA.localeCompare(strB);
+            }
           } else {
-             // Try numeric sort for numeric strings
-             const numA = Number(strA);
-             const numB = Number(strB);
-             if (!isNaN(numA) && !isNaN(numB) && strA.trim() !== "" && strB.trim() !== "") {
-                comparison = numA - numB;
-             } else {
-                comparison = strA.localeCompare(strB);
-             }
+            // Try numeric sort for numeric strings
+            const numA = Number(strA);
+            const numB = Number(strB);
+            if (
+              !isNaN(numA) &&
+              !isNaN(numB) &&
+              strA.trim() !== "" &&
+              strB.trim() !== ""
+            ) {
+              comparison = numA - numB;
+            } else {
+              comparison = strA.localeCompare(strB);
+            }
           }
         }
         return sortConfig.direction === "asc" ? comparison : -comparison;
@@ -570,7 +602,9 @@ export function ResultsTable({
                           >
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center">
-                                <span className="truncate">{c.label || c.fieldName}</span>
+                                <span className="truncate">
+                                  {c.label || c.fieldName}
+                                </span>
                                 {c.isKey ? (
                                   <span className="ml-1.5 shrink-0 rounded border border-border px-1 text-[10px] font-medium opacity-50">
                                     KEY
@@ -580,8 +614,12 @@ export function ResultsTable({
                               <div className="truncate text-[10px] font-normal text-muted-foreground opacity-50">
                                 {[
                                   c.abapType,
-                                  c.length !== undefined ? `L:${c.length}` : undefined,
-                                  c.decimals !== undefined ? `D:${c.decimals}` : undefined,
+                                  c.length !== undefined
+                                    ? `L:${c.length}`
+                                    : undefined,
+                                  c.decimals !== undefined
+                                    ? `D:${c.decimals}`
+                                    : undefined,
                                 ]
                                   .filter(Boolean)
                                   .join(" | ")}
@@ -682,7 +720,9 @@ export function ResultsTable({
                       >
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center">
-                            <span className="truncate">{column.label || column.fieldName}</span>
+                            <span className="truncate">
+                              {column.label || column.fieldName}
+                            </span>
                             {column.isKey ? (
                               <span className="ml-1.5 shrink-0 rounded border border-border px-1 text-[10px] font-medium">
                                 KEY
@@ -692,8 +732,12 @@ export function ResultsTable({
                           <div className="truncate text-[10px] font-normal text-muted-foreground">
                             {[
                               column.abapType,
-                              column.length !== undefined ? `L:${column.length}` : undefined,
-                              column.decimals !== undefined ? `D:${column.decimals}` : undefined,
+                              column.length !== undefined
+                                ? `L:${column.length}`
+                                : undefined,
+                              column.decimals !== undefined
+                                ? `D:${column.decimals}`
+                                : undefined,
                             ]
                               .filter(Boolean)
                               .join(" | ")}
@@ -804,7 +848,6 @@ export function ResultsTable({
             </div>
           </div>
         </div>
-
       </Card>
     </TooltipProvider>
   );
