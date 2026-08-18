@@ -8,8 +8,6 @@ import {
   ChevronRight,
   Eye,
   Info,
-  Maximize2,
-  Minimize2,
   Search,
   X,
 } from "lucide-react";
@@ -17,13 +15,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -141,7 +132,6 @@ export function TablePropertiesDialog({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
   );
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     if (!open || !entityName) return;
@@ -346,70 +336,40 @@ export function TablePropertiesDialog({
   }
 
   return (
-    <TooltipProvider delayDuration={400}>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          className={cn(
-            "flex flex-col gap-0 overflow-hidden p-0 transition-all duration-200",
-            isFullscreen
-              ? "h-[95vh] w-[95vw] max-w-none"
-              : "max-h-[85vh] max-w-5xl",
-          )}
-          showCloseButton={false}
-        >
-          {/* Header */}
-          <DialogHeader className="border-b border-border bg-[#f7fbff] px-5 py-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <DialogTitle className="flex items-center gap-2 text-base text-foreground">
-                  <Info className="size-4 text-primary" />
-                  <span className="truncate">{entityName}</span>
-                  <Badge
-                    variant="outline"
-                    className="border-[#b8d6ef] text-primary"
-                  >
-                    {entityType}
-                  </Badge>
-                </DialogTitle>
-                <DialogDescription className="mt-0.5 text-xs">
-                  {entityDescription || `Field schema for ${entityName}`}
-                </DialogDescription>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setIsFullscreen((v) => !v)}
-                      className="rounded-md border border-border bg-white p-2 text-primary transition hover:bg-accent"
-                      aria-label={
-                        isFullscreen ? "Exit fullscreen" : "Open fullscreen"
-                      }
-                    >
-                      {isFullscreen ? (
-                        <Minimize2 className="size-4" />
-                      ) : (
-                        <Maximize2 className="size-4" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
-                  </TooltipContent>
-                </Tooltip>
-                <Button
-                  type="button"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[85vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
+        showCloseButton={false}
+      >
+        {/* Header */}
+        <DialogHeader className="border-b border-border bg-[#f7fbff] px-5 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <DialogTitle className="flex items-center gap-2 text-base text-foreground">
+                <Info className="size-4 text-primary" />
+                <span className="truncate">{entityName}</span>
+                <Badge
                   variant="outline"
-                  size="sm"
-                  onClick={() => onOpenChange(false)}
-                  className="border-border text-muted-foreground hover:text-foreground"
+                  className="border-[#b8d6ef] text-primary"
                 >
-                  Close
-                </Button>
-              </div>
+                  {entityType}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="mt-0.5 text-xs">
+                {entityDescription || `Field schema for ${entityName}`}
+              </DialogDescription>
             </div>
-          </DialogHeader>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              className="shrink-0 border-border text-muted-foreground hover:text-foreground"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogHeader>
 
         {/* Loading state */}
         {isLoading ? (
@@ -885,7 +845,6 @@ export function TablePropertiesDialog({
           </div>
         ) : null}
       </DialogContent>
-      </Dialog>
-    </TooltipProvider>
+    </Dialog>
   );
 }
