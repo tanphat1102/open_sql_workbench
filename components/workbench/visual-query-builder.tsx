@@ -79,21 +79,6 @@ function getNextAlias(nodes: BuilderNode[]) {
   return `t${nodes.length + 1}`;
 }
 
-function parseFields(value: string) {
-  return value
-    .split(",")
-    .map((field) => field.trim())
-    .filter(Boolean);
-}
-
-function normalizeFieldName(value?: string) {
-  return value?.trim().toUpperCase() ?? "";
-}
-
-function getFieldName(field: SapSqlwbField) {
-  return normalizeFieldName(field.FieldName ?? field.JsonKey);
-}
-
 function isKeyField(field: SapSqlwbField) {
   const value = field.IsKey;
 
@@ -239,6 +224,22 @@ function applySuggestionToJoin(
   };
 }
 
+export function parseFields(fieldsStr: string): string[] {
+  if (!fieldsStr) return [];
+  return fieldsStr
+    .split(",")
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+function normalizeFieldName(fieldName?: string): string {
+  return fieldName?.trim().toUpperCase() ?? "";
+}
+
+function getFieldName(field: SapSqlwbField): string {
+  return normalizeFieldName(field.FieldName ?? field.JsonKey);
+}
+
 function formatFieldWithAlias(field: string, alias: string): string {
   if (!field || field.includes("~")) return field;
   if (!field.includes("(")) return `${alias}~${field}`;
@@ -279,8 +280,6 @@ function hasDuplicateAliases(nodes: BuilderNode[]) {
   );
 }
 
-
-
 function buildConditionClause(
   nodes: BuilderNode[],
   filters: BuilderFilter[],
@@ -294,6 +293,7 @@ function buildConditionClause(
     }
     return f.clause === "WHERE" || (!isAgg && f.clause === "HAVING");
   });
+
   const conditions = clauseFilters
     .filter((filter) => {
       if (!filter.nodeId || !filter.field) return false;
@@ -310,18 +310,34 @@ function buildConditionClause(
         (f) => getFieldName(f) === normFilterField,
       );
 
+      const isAgg = /\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(filter.field);
+      let innerCol = "";
+      const match = /\(\s*([a-zA-Z0-9_~]+)\s*\)/i.exec(filter.field);
+      if (match?.[1] && match[1] !== "*") {
+        innerCol = normalizeFieldName(match[1]);
+      }
+
+      const effectiveFieldObj =
+        fieldObj ||
+        (innerCol
+          ? nodeFields.find((f) => getFieldName(f) === innerCol)
+          : undefined) ||
+        (isAgg ? { AbapType: "INT4" } : undefined);
+
       const fieldRef =
-        nodes.length > 1 && node
+        nodes.length > 1 && node && !isAgg && !filter.field.includes("~")
           ? `${node.alias}~${filter.field}`
-          : filter.field;
+          : filter.field.includes("(") && nodes.length > 1 && node
+            ? formatFieldWithAlias(filter.field, node.alias)
+            : filter.field;
 
       let condition = "";
       if (filter.operator === "BETWEEN") {
-        condition = `${fieldRef} BETWEEN ${formatWhereValue(filter.value, fieldObj)} AND ${formatWhereValue(filter.value2 ?? "", fieldObj)}`;
+        condition = `${fieldRef} BETWEEN ${formatWhereValue(filter.value, effectiveFieldObj)} AND ${formatWhereValue(filter.value2 ?? "", effectiveFieldObj)}`;
       } else if (filter.operator === "IN" || filter.operator === "NOT IN") {
-        condition = `${fieldRef} ${filter.operator} ${formatInValue(filter.value, fieldObj)}`;
+        condition = `${fieldRef} ${filter.operator} ${formatInValue(filter.value, effectiveFieldObj)}`;
       } else {
-        condition = `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value, fieldObj)}`;
+        condition = `${fieldRef} ${filter.operator} ${formatWhereValue(filter.value, effectiveFieldObj)}`;
       }
 
       return index === 0 ? condition : `${filter.conjunction} ${condition}`;
@@ -385,7 +401,29 @@ function buildHavingClause(
   return buildConditionClause(nodes, filters, "HAVING", fieldsByEntity);
 }
 
-function buildSql(
+export function buildOrderByClause(nodes: BuilderNode[]) {
+  const clauses = nodes.flatMap((node) => {
+    const projectionAliases = parseFields(node.fields)
+      .map((part) => /\s+AS\s+([A-Z0-9_]+)/i.exec(part.trim())?.[1])
+      .filter((alias): alias is string => Boolean(alias))
+      .map((alias) => alias.toUpperCase());
+
+    return node.orderBy
+      .filter((o) => o.field)
+      .map((o) => {
+        const fieldName = o.field.trim();
+        const isAlias = projectionAliases.includes(fieldName.toUpperCase());
+        if (nodes.length > 1 && !isAlias && !fieldName.includes("~")) {
+          return `${node.alias}~${fieldName} ${o.direction}`;
+        }
+        return `${fieldName} ${o.direction}`;
+      });
+  });
+
+  return clauses.length > 0 ? `ORDER BY ${clauses.join(", ")}` : "";
+}
+
+export function buildSql(
   nodes: BuilderNode[],
   joins: BuilderJoin[],
   filters: BuilderFilter[],
@@ -456,20 +494,6 @@ function buildSql(
   }
 
   return lines.join("\n");
-}
-
-function buildOrderByClause(nodes: BuilderNode[]) {
-  const clauses = nodes.flatMap((node) =>
-    node.orderBy
-      .filter((o) => o.field)
-      .map((o) =>
-        nodes.length > 1
-          ? `${node.alias}~${o.field} ${o.direction}`
-          : `${o.field} ${o.direction}`,
-      ),
-  );
-
-  return clauses.length > 0 ? `ORDER BY ${clauses.join(", ")}` : "";
 }
 
 function centerPosition(index: number) {
@@ -559,9 +583,10 @@ function isFilterValid(
   const node = nodes.find((item) => item.id === filter.nodeId);
   if (!node) return false;
 
-  const aggMatch = /^([A-Z]+)\s*\(\s*(?:DISTINCT\s+)?([A-Z0-9_]+|\*)\s*\)$/i.exec(
-    filter.field.trim(),
-  );
+  const aggMatch =
+    /^([A-Z]+)\s*\(\s*(?:DISTINCT\s+)?([A-Z0-9_]+|\*)\s*\)$/i.exec(
+      filter.field.trim(),
+    );
 
   if (aggMatch) {
     const innerCol = aggMatch[2].toUpperCase();
@@ -1421,6 +1446,23 @@ export function VisualQueryBuilder({
             const entityInfo = entities.find(
               (e) => e.name === pickerNode.entityName,
             );
+
+            const projectionAliases = parseFields(pickerNode.fields)
+              .map((part) => /\s+AS\s+([A-Z0-9_]+)/i.exec(part.trim())?.[1])
+              .filter((alias): alias is string => Boolean(alias))
+              .map((alias) => alias.toUpperCase());
+
+            const extraFields: SapSqlwbField[] = projectionAliases.map(
+              (alias) => ({
+                FieldName: alias,
+                FieldText: `Calculated Projection Alias (${alias})`,
+                AbapType: "CALCULATED",
+                Position: 0,
+                OriginType: "CALCULATED",
+                IsKey: false,
+              }),
+            );
+
             return (
               <TablePropertiesDialog
                 open
@@ -1430,6 +1472,7 @@ export function VisualQueryBuilder({
                 }}
                 entityName={pickerNode.entityName}
                 entityDescription={entityInfo?.description}
+                extraFields={extraFields}
                 selectionMode
                 onPreviewFields={(fieldNames) => {
                   const cb = fieldPickerCallbackRef.current;
