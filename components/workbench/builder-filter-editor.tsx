@@ -191,7 +191,7 @@ export function BuilderFilterEditor({
               fields={nodeFields}
               value={filter.field}
               onValueChange={(field) => onUpdate({ field })}
-              placeholder="Select"
+              placeholder="Select field"
               className="h-6 text-[11px] min-w-0"
             />
           </div>
@@ -200,8 +200,8 @@ export function BuilderFilterEditor({
           <div className="text-[10px] text-muted-foreground mb-0.5">Operator</div>
           <Select
             value={filter.operator}
-            onValueChange={(operator) =>
-              onUpdate({ operator: operator as BuilderFilter["operator"] })
+            onValueChange={(op) =>
+              onUpdate({ operator: op as BuilderFilter["operator"] })
             }
           >
             <SelectTrigger className="h-6 text-[11px]">
@@ -211,8 +211,8 @@ export function BuilderFilterEditor({
               <SelectItem value="=">=</SelectItem>
               <SelectItem value="<>">&lt;&gt;</SelectItem>
               <SelectItem value=">">&gt;</SelectItem>
-              <SelectItem value=">=">&gt;=</SelectItem>
               <SelectItem value="<">&lt;</SelectItem>
+              <SelectItem value=">=">&gt;=</SelectItem>
               <SelectItem value="<=">&lt;=</SelectItem>
               <SelectItem value="LIKE">LIKE</SelectItem>
               <SelectItem value="BETWEEN">BETWEEN</SelectItem>
@@ -221,30 +221,26 @@ export function BuilderFilterEditor({
             </SelectContent>
           </Select>
         </div>
-        <div className="min-w-0">
-          <div className="text-[10px] text-muted-foreground mb-0.5">
-            {filter.operator === "BETWEEN"
-              ? "From"
-              : filter.operator === "IN" || filter.operator === "NOT IN"
-                ? "Values (comma separated)"
-                : "Value"}
-          </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Value</div>
           <Input
             value={filter.value}
             onChange={(event) => onUpdate({ value: event.target.value })}
             placeholder={
-              filter.operator === "BETWEEN"
-                ? "From"
-                : filter.operator === "IN" || filter.operator === "NOT IN"
-                  ? "e.g. AA, LH, DL"
+              filter.operator === "IN" || filter.operator === "NOT IN"
+                ? "Values (comma separated)"
+                : filter.operator === "LIKE"
+                  ? "e.g. AA%"
                   : "Value"
             }
             className="h-6 text-[11px]"
           />
         </div>
         {filter.operator === "BETWEEN" ? (
-          <div className="min-w-0">
-            <div className="text-[10px] text-muted-foreground mb-0.5">To</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] text-muted-foreground mb-0.5">
+              Value 2
+            </div>
             <Input
               value={filter.value2 ?? ""}
               onChange={(event) => onUpdate({ value2: event.target.value })}
