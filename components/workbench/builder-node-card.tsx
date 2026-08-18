@@ -461,7 +461,7 @@ export function BuilderNodeCard({
               </button>
             </div>
             {node.orderBy.map((order, oi) => (
-              <div key={oi} className="mb-1 flex items-center gap-1">
+              <div key={oi} className="mb-1 flex items-center gap-1 min-w-0 w-full">
                 <Select
                   value={order.field}
                   onValueChange={(v) => {
@@ -470,15 +470,33 @@ export function BuilderNodeCard({
                     onUpdate({ orderBy: next });
                   }}
                 >
-                  <SelectTrigger className="h-6 flex-1 text-[10px]">
-                    <SelectValue placeholder="Field" />
+                  <SelectTrigger className="h-6 flex-1 min-w-0 text-[10px] overflow-hidden">
+                    <SelectValue placeholder="Field" className="truncate block" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {nodeFields.map((f) => (
-                      <SelectItem key={getFieldName(f)} value={getFieldName(f)}>
-                        {getFieldName(f)}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-w-[240px]">
+                    {(() => {
+                      const colNames = nodeFields
+                        .map((f) => getFieldName(f))
+                        .filter(Boolean);
+                      const aliasNames = parseFields(node.fields)
+                        .map(
+                          (part) =>
+                            /\s+AS\s+([A-Z0-9_]+)/i.exec(part.trim())?.[1],
+                        )
+                        .filter((alias): alias is string => Boolean(alias))
+                        .map((alias) => alias.toUpperCase());
+                      const allOptions = Array.from(
+                        new Set([...colNames, ...aliasNames]),
+                      );
+
+                      return allOptions.map((opt) => (
+                        <SelectItem key={opt} value={opt} title={opt}>
+                          <span className="truncate block max-w-[190px]">
+                            {opt}
+                          </span>
+                        </SelectItem>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
                 <Select

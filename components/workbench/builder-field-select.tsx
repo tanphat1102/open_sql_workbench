@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -54,19 +55,19 @@ export function BuilderFieldSelect({
 
   return (
     <Select value={value || undefined} onValueChange={onValueChange}>
-      <SelectTrigger className={className}>
-        <SelectValue placeholder={placeholder} />
+      <SelectTrigger className={cn("min-w-0 overflow-hidden", className)}>
+        <SelectValue placeholder={placeholder} className="truncate block" />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="max-w-[260px]">
         {fields.map((field) => {
           const fieldName = getFieldName(field);
 
           return (
-            <SelectItem key={fieldName} value={fieldName}>
-              <span className="flex items-center gap-2">
-                <span>{fieldName}</span>
+            <SelectItem key={fieldName} value={fieldName} title={fieldName}>
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="truncate block max-w-[180px]">{fieldName}</span>
                 {showKeyBadge && isKeyField(field) ? (
-                  <span className="text-[10px] uppercase text-primary">
+                  <span className="shrink-0 text-[10px] uppercase text-primary font-semibold">
                     Key
                   </span>
                 ) : null}
