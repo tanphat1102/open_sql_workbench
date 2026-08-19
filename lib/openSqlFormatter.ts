@@ -1,7 +1,6 @@
 import { format } from "sql-formatter";
 
 const abapKeywordReplacements: Array<[RegExp, string]> = [
-  [/\bup\s+to\b/gi, "UP TO"],
   [/\brows\b/gi, "ROWS"],
   [/\bclient\s+specified\b/gi, "CLIENT SPECIFIED"],
   [/\bbypassing\s+buffer\b/gi, "BYPASSING BUFFER"],
@@ -20,7 +19,6 @@ function normalizeAbapKeywords(value: string) {
 
 function addAbapClauseBreaks(value: string) {
   return value
-    .replace(/\s+(UP TO\s+\d+\s+ROWS)\b/g, "\n$1")
     .replace(/\s+(CLIENT SPECIFIED)\b/g, "\n$1")
     .replace(/\s+(BYPASSING BUFFER)\b/g, "\n$1")
     .replace(/\s+(INTO TABLE\b[^\n]*)/g, "\n$1")

@@ -77,7 +77,6 @@ const sqlKeywords = [
   "ORDER BY",
   "GROUP BY",
   "HAVING",
-  "UP TO",
   "ROWS",
   "DISTINCT",
   "ASC",
@@ -328,24 +327,6 @@ function buildCompletionItems(
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
       detail: "Limit returned rows",
-      range,
-    },
-    {
-      label: "UP TO rows",
-      kind: monaco.languages.CompletionItemKind.Snippet,
-      insertText: "UP TO ${1:100} ROWS",
-      insertTextRules:
-        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      detail: "ABAP Open SQL row limit",
-      range,
-    },
-    {
-      label: "SELECT UP TO rows",
-      kind: monaco.languages.CompletionItemKind.Snippet,
-      insertText: `SELECT * FROM \${1:${selectedEntityName}} UP TO \${2:100} ROWS`,
-      insertTextRules:
-        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      detail: "Select rows with ABAP Open SQL row limit",
       range,
     },
     {

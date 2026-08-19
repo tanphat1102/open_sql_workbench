@@ -17,7 +17,6 @@ const clausePatterns = [
   { name: "GROUP BY", pattern: /\bGROUP\s+BY\b/i },
   { name: "HAVING", pattern: /\bHAVING\b/i },
   { name: "ORDER BY", pattern: /\bORDER\s+BY\b/i },
-  { name: "UP TO", pattern: /\bUP\s+TO\b/i },
   { name: "LIMIT", pattern: /\bLIMIT\b/i },
 ];
 
@@ -510,7 +509,7 @@ export function validateOpenSql(
       const previousClause = foundClauses[index - 1];
       if (previousClause && clause.index < previousClause.index) {
         errors.push({
-          message: `${clause.name} appears before ${previousClause.name}. Use SELECT ... FROM ... WHERE ... GROUP BY ... HAVING ... ORDER BY ... UP TO n ROWS.`,
+          message: `${clause.name} appears before ${previousClause.name}. Use SELECT ... FROM ... WHERE ... GROUP BY ... HAVING ... ORDER BY.`,
           startColumn: clause.index + 1,
           endColumn: clause.index + clause.name.length + 1,
         });
@@ -521,7 +520,7 @@ export function validateOpenSql(
     if (whereIndex >= 0) {
       const whereClause = query
         .slice(whereIndex + "WHERE".length)
-        .replace(/\b(GROUP\s+BY|HAVING|ORDER\s+BY|UP\s+TO|LIMIT)\b[\s\S]*$/i, "")
+        .replace(/\b(GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT)\b[\s\S]*$/i, "")
         .trim();
 
       if (!whereClause) {
@@ -696,41 +695,26 @@ export function validateOpenSql(
       });
     }
 
-    const upToRowsMatch = /\bUP\s+TO\s+([^\s,]+)\s+ROWS\b/i.exec(query);
-    const incompleteUpToIndex = findPatternIndex(query, /\bUP\s+TO\b/i);
-    if (incompleteUpToIndex >= 0 && !upToRowsMatch) {
+    const upToIndex = findPatternIndex(query, /\bUP\s+TO\b/i);
+    if (upToIndex >= 0) {
+      const match = /\bUP\s+TO(\s+[^\s,]+\s+ROWS)?\b/i.exec(query);
+      const matchLen = match ? match[0].length : 5;
       errors.push({
-        message: "Use UP TO <number> ROWS.",
-        startColumn: incompleteUpToIndex + 1,
-        endColumn: query.length + 1,
-      });
-    }
-
-    if (upToRowsMatch?.[1] && !/^\d+$/.test(upToRowsMatch[1])) {
-      errors.push({
-        message: "UP TO requires a positive whole number before ROWS.",
-        startColumn: upToRowsMatch.index + "UP TO ".length + 1,
-        endColumn:
-          upToRowsMatch.index + "UP TO ".length + upToRowsMatch[1].length + 1,
+        message: "UP TO syntax is not supported. Please remove the UP TO clause.",
+        startColumn: upToIndex + 1,
+        endColumn: upToIndex + matchLen + 1,
       });
     }
 
     const hasTop = /\bTOP\b/i.test(query);
     const hasLimit = /\bLIMIT\b/i.test(query);
-    const hasUpToRows = /\bUP\s+TO\b/i.test(query);
-    const rowLimitCount = [hasTop, hasLimit, hasUpToRows].filter(Boolean).length;
-    if (rowLimitCount > 1) {
+    if (hasTop && hasLimit) {
       const firstRowLimitIndex = Math.min(
-        ...[
-          hasTop ? findKeywordIndex(query, "TOP") : Number.POSITIVE_INFINITY,
-          hasLimit ? findKeywordIndex(query, "LIMIT") : Number.POSITIVE_INFINITY,
-          hasUpToRows
-            ? findPatternIndex(query, /\bUP\s+TO\b/i)
-            : Number.POSITIVE_INFINITY,
-        ],
+        findKeywordIndex(query, "TOP"),
+        findKeywordIndex(query, "LIMIT"),
       );
       errors.push({
-        message: "Use only one row limiting clause: TOP, LIMIT, or UP TO n ROWS.",
+        message: "Use only one row limiting clause: TOP or LIMIT.",
         startColumn: firstRowLimitIndex + 1,
         endColumn: firstRowLimitIndex + 6,
       });
