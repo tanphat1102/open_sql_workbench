@@ -228,13 +228,18 @@ export function BuilderFilterEditor({
             onChange={(event) => onUpdate({ value: event.target.value })}
             placeholder={
               filter.operator === "IN" || filter.operator === "NOT IN"
-                ? "Values (comma separated)"
+                ? "e.g. AA, LH, DL"
                 : filter.operator === "LIKE"
                   ? "e.g. AA%"
                   : "Value"
             }
             className="h-6 text-[11px]"
           />
+          {filter.operator === "IN" || filter.operator === "NOT IN" ? (
+            <div className="text-[9px] text-muted-foreground mt-0.5">
+              Comma-separated list (e.g. AA, LH, DL)
+            </div>
+          ) : null}
         </div>
         {filter.operator === "BETWEEN" ? (
           <div className="min-w-0 flex-1">
